@@ -386,6 +386,15 @@ svg.grafik .pt-itw{fill:#3F63B8}
 .laci-kepala .btn.polos{color:#fff;border-color:rgba(255,255,255,.4);background:transparent;white-space:nowrap}
 .kepala{margin-bottom:4px}
 .isi>.grid-kpi,.isi>.kartu,.isi>.grid2{margin-bottom:18px}
+/* --- tahap 2: sinkron, PIN, "Sudah terkirim?" --- */
+.sisi-bawah .btn-sinkron{width:100%;justify-content:center;margin-bottom:4px}
+.sisi-bawah .kecil,.kecil{font-size:12px}
+.tanya-wa{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#E3F2E9;border:1px solid #BFE0CC;color:#1B4D33;border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:14px}
+.tanya-wa span{flex:1;min-width:160px}
+.form-sinkron{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.form-sinkron .field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--pudar)}
+.kepala-aksi{display:flex;gap:8px;flex-wrap:wrap}
+@media (max-width:760px){.sisi .btn-sinkron{display:none}}
 
 </style>
 </head>
@@ -595,7 +604,7 @@ function gasMuatLembar(peta) {
  * ==========================================================================
  */
 
-var VERSI = '1.14.2';
+var VERSI = '1.15';
 var TZ = 'Asia/Jakarta';
 var _HARI_INI_UJI = null; // khusus pengujian; biarkan null
 
@@ -4275,6 +4284,9 @@ function onOpen() {
     .addSubMenu(ui.createMenu('Otomatis')
       .addItem('Aktifkan impor & hitung otomatis', 'aktifkanOtomatis')
       .addItem('Matikan', 'matikanOtomatis'))
+    .addSubMenu(ui.createMenu('LENSA 2.0 (aplikasi)')
+      .addItem('Siapkan sinkron & lihat kunci…', 'siapkanSinkronApp')
+      .addItem('Ganti kunci sinkron', 'gantiKunciApp'))
     .addSubMenu(ui.createMenu('Monitor SPPG')
       .addItem('Sambungkan ke Monitor SPPG…', 'sambungMonitorSppg')
       .addItem('Tukar data sekarang', 'jembatanSppgSekarang')
@@ -5327,6 +5339,8 @@ function churnTanpaNonAsn() {
  */
 
 function doGet() {
+  // 1.15: deployment "Siapa saja" (untuk sinkron LENSA 2.0) tidak boleh membuka aplikasi HP untuk orang lain
+  if (!pemilikMembuka_()) return HtmlService.createHtmlOutput('<p style="font-family:sans-serif">LENSA PK · akses ditolak.</p>').setTitle('LENSA PK');
   return HtmlService.createHtmlOutput(HTML_APP)
     .setTitle('LENSA PK')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover')
@@ -6575,6 +6589,121 @@ function kirimBerkasSppg_(namaFile, grid, an, peta, data) {
   tulisSppg_([{ jenis: 'berkas', id: idWaktu_('B'), data: { nama: namaFile, laporan: an.jenis, waktu: sekarangStr_(), grid: out } }]);
 }
 
+/* ================= SERVER SINKRON LENSA 2.0 (sejak 1.15) =================
+ * Aplikasi LENSA 2.0 (GitHub Pages) menyimpan data di perangkat dan bersinkron ke spreadsheet INI.
+ * - Tarik: tab yang berubah saja (sidik MD5 per tab).
+ * - Kirim: daftar tindakan (apiCatat, apiSimpanKontak, …) yang dijalankan di sini dengan fungsi yang sama;
+ *   tiap tindakan ber-cid sehingga kiriman ulang tidak dobel.
+ * Pasang: deployment Aplikasi web kedua (Jalankan sebagai: Saya · Akses: Siapa saja); setiap permintaan wajib KUNCI.
+ * Aplikasi HP lama (doGet) tetap hanya terbuka untuk pemilik.
+ */
+var APP_FN_TULIS = ['apiSimpanPk', 'apiGeotag', 'apiKelompok', 'apiGantiKelompok', 'apiSimpanKontak', 'apiLepasKontak', 'apiSimpanPengurus',
+  'apiPkKontak', 'apiSatukanOrang', 'apiCatat', 'apiSimpanTemplat', 'apiHapusTemplat', 'apiCentang', 'apiCentangPk', 'apiSimpanJadwal', 'apiHitung', 'apiImporApp'];
+var APP_FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg']; // butuh internet / spreadsheet lain: tidak bisa di perangkat
+var APP_TAB_LEWATI = { GALAT: true, SINKRON_SPPG: true };
+
+function pemilikMembuka_() {
+  try {
+    var a = Session.getActiveUser().getEmail(), b = Session.getEffectiveUser().getEmail();
+    return !!a && a === b;
+  } catch (e) { return true; }
+}
+
+function siapkanSinkronApp() {
+  var pr = PropertiesService.getScriptProperties();
+  if (!pr.getProperty('KUNCI_APP')) pr.setProperty('KUNCI_APP', (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '').slice(0, 40));
+  kabar_('KUNCI sinkron LENSA 2.0:\n\n' + pr.getProperty('KUNCI_APP') +
+    '\n\nLangkah sekali saja:\n1. Ekstensi › Apps Script › Terapkan › Deployment baru › Aplikasi web.\n2. Jalankan sebagai: Saya · Yang memiliki akses: Siapa saja › Terapkan.\n3. Salin URL /exec, lalu di LENSA 2.0: Data & pengaturan › Sinkron: tempel URL + KUNCI.\n\nAplikasi HP lama tetap hanya bisa dibuka oleh Anda. Simpan kunci hanya di perangkat Anda.');
+}
+function gantiKunciApp() { PropertiesService.getScriptProperties().deleteProperty('KUNCI_APP'); siapkanSinkronApp(); }
+
+/** Laporan dari LENSA 2.0: diimpor dengan aturan yang sama (jagaPembina_) lalu dihitung ulang. */
+function apiImporApp(berkas) {
+  var lock = kunciApi_();
+  try {
+    muatPengaturan_();
+    var hasil = (berkas || []).map(function (b) { return imporGrid_(String(b.nama || 'laporan'), b.grid); });
+    if (hasil.some(function (h) { return h.ok; })) hitungUlang_();
+    return { ok: true, hasil: hasil.map(function (h) { return { ok: h.ok, ringkas: h.ringkas }; }) };
+  } finally { lock.releaseLock(); }
+}
+
+function sidikTab_(nilai) {
+  var b = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify(nilai), Utilities.Charset.UTF_8);
+  return b.map(function (x) { return ('0' + ((x + 256) % 256).toString(16)).slice(-2); }).join('');
+}
+function nilaiTab_(sh) {
+  var lr = sh.getLastRow(), lc = sh.getLastColumn();
+  if (lr < 1 || lc < 1) return [];
+  return sh.getRange(1, 1, lr, lc).getValues().map(function (r) { return r.map(function (x) { return x instanceof Date ? { $d: x.getTime() } : x; }); });
+}
+
+function doPost(e) {
+  var hasil;
+  try {
+    var req = JSON.parse(e && e.postData ? e.postData.contents : '{}');
+    var k = PropertiesService.getScriptProperties().getProperty('KUNCI_APP');
+    if (!k) throw new Error('Sinkron LENSA 2.0 belum disiapkan. Di spreadsheet: menu LENSA PK › LENSA 2.0 › Siapkan sinkron.');
+    if (!req.kunci || req.kunci !== k) throw new Error('Kunci sinkron salah.');
+    muatPengaturan_();
+    if (req.aksi === 'cek') hasil = { ok: true, versi: VERSI, kode: P_('kode_pembina') };
+    else if (req.aksi === 'jalankan') hasil = jalankanApp_(req.op || []);
+    else if (req.aksi === 'tab') hasil = tabApp_(req.hash || {});
+    else if (req.aksi === 'panggil') hasil = panggilApp_(req.fn, req.args || []);
+    else throw new Error('Aksi tidak dikenal.');
+  } catch (err) {
+    hasil = { ok: false, galat: String(err && err.message || err) };
+  }
+  return ContentService.createTextOutput(JSON.stringify(hasil)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function jalankanApp_(ops) {
+  var out = [];
+  ops.forEach(function (op) {
+    var cid = 'app:' + op.cid;
+    if (APP_FN_TULIS.indexOf(op.fn) < 0) { out.push({ cid: op.cid, ok: false, galat: 'Tindakan tidak diizinkan: ' + op.fn }); return; }
+    if (sudahDiproses_(cid)) { out.push({ cid: op.cid, ok: true, ulang: true }); return; }
+    try {
+      var fn = { apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak,
+        apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat,
+        apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiSimpanJadwal: apiSimpanJadwal,
+        apiHitung: apiHitung, apiImporApp: apiImporApp }[op.fn];
+      fn.apply(null, op.args || []);
+      tandaiDiproses_(cid);
+      out.push({ cid: op.cid, ok: true });
+    } catch (er) {
+      catatGalat_('LENSA 2.0 · ' + op.fn, er.message, VERSI, 'aplikasi');
+      tandaiDiproses_(cid); // gagal karena data (mis. PK tidak ada): jangan diulang terus
+      out.push({ cid: op.cid, ok: false, galat: er.message });
+    }
+  });
+  return { ok: true, hasil: out };
+}
+
+function tabApp_(hashKlien) {
+  var ss = ss_(), tab = {}, hash = {}, ukuran = 0;
+  ss.getSheets().forEach(function (sh) {
+    var n = sh.getName();
+    if (APP_TAB_LEWATI[n]) return;
+    var v = nilaiTab_(sh), h = sidikTab_(v);
+    hash[n] = h;
+    if (hashKlien[n] !== h) { tab[n] = v; ukuran += JSON.stringify(v).length; }
+  });
+  var sppg = null;
+  try { if (sppgAktif_()) sppg = { terakhir: sppgProp_().getProperty('SPPG_TERAKHIR') || '', galat: sppgProp_().getProperty('SPPG_GALAT') || '' }; } catch (e) { /* diam */ }
+  return { ok: true, hash: hash, tab: tab, sppg: sppg, url: ss.getUrl(), versi: VERSI };
+}
+
+function panggilApp_(fn, args) {
+  if (APP_FN_LANGSUNG.indexOf(fn) < 0) throw new Error('Tindakan tidak diizinkan: ' + fn);
+  var nilai = fn === 'apiUraiPeta' ? apiUraiPeta.apply(null, args) : apiJembatanSppg();
+  return { ok: true, nilai: nilai };
+}
+
+/* === 06-fungsi.js === */
+/* === 06-fungsi (dibuat bangun.js) === */
+var FUNGSI_LENSA = {apiMuat: apiMuat, apiRiwayat: apiRiwayat, apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak, apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat, apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiGalat: apiGalat, apiSimpanJadwal: apiSimpanJadwal, apiUraiPeta: apiUraiPeta, apiHitung: apiHitung, apiJembatanSppg: apiJembatanSppg, apiImporApp: apiImporApp};
+
 /* === 11-xlsx.js === */
 /* ----------------------------------------------------------------------
  *  Pembaca file Excel (.xlsx) sederhana tanpa pustaka luar.
@@ -6912,12 +7041,16 @@ function gambarRincian(p, r) {
 
 /* === 20-simpan.js === */
 /* ----------------------------------------------------------------------
- *  Penyimpanan di perangkat: IndexedDB (cadangan localStorage tidak dipakai:
- *  data LENSA bisa beberapa MB). Semua tab "spreadsheet" + pengaturan aplikasi.
+ *  Penyimpanan di perangkat: IndexedDB 'lensa_pk_2'. Semua tab "spreadsheet"
+ *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
+ *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.0-tahap1';
-var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '' };
-var APP = { pengaturan: { sumber: '', dataPer: '' }, impor: [] };
+var VERSI_APP = '2.0';
+var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
+function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', hash: {}, antre: [], gagal: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
+var APP = appKosong();
+var PBKDF2_ULANG = 250000;
 
 function bukaIdb() {
   return new Promise(function (ok) {
@@ -6926,6 +7059,7 @@ function bukaIdb() {
       r.onupgradeneeded = function () { r.result.createObjectStore('kv'); };
       r.onsuccess = function () { ok(r.result); };
       r.onerror = function () { ok(null); };
+      r.onblocked = function () { ok(null); };
     } catch (e) { ok(null); }
   });
 }
@@ -6939,55 +7073,148 @@ function idbAmbil(k) {
 function idbTaruh(k, v) {
   return new Promise(function (ok) {
     if (!SIMPAN.db) return ok(false);
-    try { var t = SIMPAN.db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = function () { ok(true); }; t.onerror = function () { ok(false); }; }
+    try { var t = SIMPAN.db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = function () { ok(true); }; t.onerror = t.onabort = function () { ok(false); }; }
     catch (e) { ok(false); }
   });
 }
 
+/* ---------- sandi ---------- */
+function keB64(buf) { var u = new Uint8Array(buf), s = ''; for (var i = 0; i < u.length; i += 8192) s += String.fromCharCode.apply(null, u.subarray(i, i + 8192)); return btoa(s); }
+function dariB64(s) { var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+async function kunciDariPin(pin, garam) {
+  var dasar = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(pin)), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: garam, iterations: PBKDF2_ULANG, hash: 'SHA-256' }, dasar, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function mampat(teks) {
+  var b = new TextEncoder().encode(teks);
+  if (typeof CompressionStream === 'undefined') return { z: 0, b: b };
+  var s = new Blob([b]).stream().pipeThrough(new CompressionStream('gzip'));
+  return { z: 1, b: new Uint8Array(await new Response(s).arrayBuffer()) };
+}
+async function urai(b, z) {
+  if (!z) return new TextDecoder().decode(b);
+  var s = new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Response(s).text();
+}
+async function sandikan(obj, kunci, garam) {
+  var m = await mampat(JSON.stringify(obj)), iv = crypto.getRandomValues(new Uint8Array(12));
+  var isi = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, kunci, m.b);
+  return { terkunci: true, garam: keB64(garam), iv: keB64(iv), z: m.z, isi: isi };
+}
+async function bukaSandi(rek, kunci) {
+  var isi = rek.isi instanceof ArrayBuffer || ArrayBuffer.isView(rek.isi) ? rek.isi : dariB64(rek.isi);
+  var b = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: dariB64(rek.iv) }, kunci, isi);
+  return JSON.parse(await urai(new Uint8Array(b), rek.z));
+}
+function pinAktif() { return !!SIMPAN.kunci; }
+
+/* ---------- muat / simpan ---------- */
+function pakaiMuatan(d) {
+  if (d && d.gas) gasImpor(d.gas);
+  var a = appKosong();
+  APP = Object.assign(a, (d && d.app) || {});
+  APP.sinkron = Object.assign(appKosong().sinkron, APP.sinkron || {});
+}
+/** Hasil: 'kosong' | 'ada' | 'terkunci' (perlu PIN: bukaDenganPin). */
 async function muatPerangkat() {
   SIMPAN.db = await bukaIdb();
   SIMPAN.jenis = SIMPAN.db ? 'idb' : 'memori';
   var d = await idbAmbil('lensa');
-  if (d && d.gas) { gasImpor(d.gas); APP = Object.assign(APP, d.app || {}); }
-  return !!(d && d.gas);
+  SIMPAN.dimuat = Date.now();
+  if (!d) return 'kosong';
+  if (d.terkunci) { SIMPAN.rekTerkunci = d; return 'terkunci'; }
+  pakaiMuatan(d);
+  return d.gas ? 'ada' : 'kosong';
 }
+/** PIN salah → false. */
+async function bukaDenganPin(pin) {
+  var rek = SIMPAN.rekTerkunci || await idbAmbil('lensa');
+  var garam = dariB64(rek.garam), k = await kunciDariPin(pin, garam), d;
+  try { d = await bukaSandi(rek, k); } catch (e) { return false; }
+  SIMPAN.kunci = k; SIMPAN.garam = garam; SIMPAN.rekTerkunci = null;
+  pakaiMuatan(d);
+  return true;
+}
+function muatanSekarang() { return { versi: VERSI_APP, waktu: Date.now(), gas: gasEkspor(), app: APP }; }
 
 function simpanNanti() {
   clearTimeout(SIMPAN.tertunda);
   SIMPAN.tertunda = setTimeout(simpanSekarang, 400);
 }
-async function simpanSekarang() {
+var antreSimpan = Promise.resolve();
+function simpanSekarang() {
   clearTimeout(SIMPAN.tertunda);
-  var ok = await idbTaruh('lensa', { versi: VERSI_APP, waktu: Date.now(), gas: gasEkspor(), app: APP });
-  SIMPAN.galat = ok ? '' : 'Gagal menyimpan di perangkat';
-  SIMPAN.terakhir = ok ? new Date().toISOString() : SIMPAN.terakhir;
-  return ok;
+  antreSimpan = antreSimpan.then(async function () {
+    var m = muatanSekarang(), rek = m;
+    if (SIMPAN.kunci) { rek = await sandikan(m, SIMPAN.kunci, SIMPAN.garam); rek.versi = VERSI_APP; rek.waktu = m.waktu; }
+    var ok = await idbTaruh('lensa', rek);
+    if (ok) { await idbTaruh('meta', { waktu: m.waktu, oleh: ID_HALAMAN }); SIMPAN.dimuat = m.waktu; }
+    SIMPAN.galat = ok ? '' : 'Gagal menyimpan di perangkat';
+    SIMPAN.terakhir = ok ? new Date().toISOString() : SIMPAN.terakhir;
+    return ok;
+  }).catch(function (e) { SIMPAN.galat = 'Gagal menyimpan: ' + e.message; return false; });
+  return antreSimpan;
+}
+/** Halaman lain (mis. tampilan HP di tab lain) menyimpan lebih baru → muat ulang dari perangkat. */
+async function cekPerubahanLuar() {
+  if (!SIMPAN.db) return false;
+  var m = await idbAmbil('meta');
+  if (!m || m.oleh === ID_HALAMAN || m.waktu <= SIMPAN.dimuat) return false;
+  var d = await idbAmbil('lensa');
+  if (!d) return false;
+  if (d.terkunci) { if (!SIMPAN.kunci) return false; try { d = await bukaSandi(d, SIMPAN.kunci); } catch (e) { location.reload(); return false; } }
+  pakaiMuatan(d); SIMPAN.dimuat = m.waktu;
+  if (SIMPAN.setelahMuatUlang) SIMPAN.setelahMuatUlang();
+  return true;
 }
 
+async function pasangPin(pin) {
+  if (!/^\d{4,12}$/.test(String(pin))) throw new Error('PIN 4–12 angka.');
+  SIMPAN.garam = crypto.getRandomValues(new Uint8Array(16));
+  SIMPAN.kunci = await kunciDariPin(pin, SIMPAN.garam);
+  return simpanSekarang();
+}
+async function lepasPin() { SIMPAN.kunci = null; SIMPAN.garam = null; return simpanSekarang(); }
+
+/* ---------- cadangan ---------- */
 function unduhBlob(blob, nama) {
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = nama;
   document.body.appendChild(a); a.click();
   setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
-function unduhCadangan() {
-  var isi = JSON.stringify({ jenis: 'LENSA PK 2.0 cadangan', versi: VERSI_APP, waktu: new Date().toISOString(), gas: gasEkspor(), app: APP });
+/** Kunci sinkron tidak ikut cadangan. Bila PIN aktif, cadangan ikut terkunci PIN yang sama. */
+async function unduhCadangan() {
+  var app = JSON.parse(JSON.stringify(APP));
+  app.sinkron.kunci = ''; app.sinkron.url = '';
+  var d = { jenis: 'LENSA PK 2.0 cadangan', versi: VERSI_APP, waktu: new Date().toISOString(), gas: gasEkspor(), app: app }, isi;
+  if (SIMPAN.kunci) {
+    var r = await sandikan(d, SIMPAN.kunci, SIMPAN.garam);
+    isi = JSON.stringify({ jenis: 'LENSA PK 2.0 cadangan terkunci', versi: VERSI_APP, garam: r.garam, iv: r.iv, z: r.z, isi: keB64(r.isi) });
+  } else isi = JSON.stringify(d);
   unduhBlob(new Blob([isi], { type: 'application/json' }), 'LENSA_PK_cadangan_' + new Date().toISOString().slice(0, 10) + '.json');
 }
-async function pulihkanCadangan(file) {
+async function pulihkanCadangan(file, mintaPin) {
   var d = JSON.parse(await file.text());
+  if (d && d.jenis === 'LENSA PK 2.0 cadangan terkunci') {
+    var pin = await mintaPin();
+    if (!pin) throw new Error('Dibatalkan.');
+    try { d = await bukaSandi(d, await kunciDariPin(pin, dariB64(d.garam))); } catch (e) { throw new Error('PIN cadangan salah.'); }
+  }
   if (!d || !d.gas || !d.gas.tab) throw new Error('Bukan file cadangan LENSA PK 2.0.');
-  gasImpor(d.gas); APP = Object.assign({ pengaturan: {}, impor: [] }, d.app || {});
+  var sink = APP.sinkron;
+  pakaiMuatan(d);
+  APP.sinkron.url = sink.url; APP.sinkron.kunci = sink.kunci; APP.sinkron.hash = {}; // tarik berikutnya mengambil ulang semua tab
   await simpanSekarang();
 }
 async function hapusSemua() {
-  GAS.tab = []; GAS.props = {}; APP = { pengaturan: { sumber: '', dataPer: '' }, impor: [] };
+  GAS.tab = []; GAS.props = {}; APP = appKosong(); SIMPAN.kunci = null; SIMPAN.garam = null;
   await simpanSekarang();
 }
 
 /* === 30-mesin.js === */
 /* ----------------------------------------------------------------------
- *  Mesin: memanggil fungsi LENSA 1.14 (server.gs) di perangkat.
+ *  Mesin: memanggil fungsi LENSA (server.gs) di perangkat.
  * ---------------------------------------------------------------------- */
 
 /** Pastikan tab-tab LENSA ada (sekali saat data kosong). */
@@ -7038,9 +7265,11 @@ async function imporBerkas(files) {
       hasil.push({ ok: false, ringkas: nama + ': GAGAL — ' + e.message });
     }
   }
-  if (spreadsheet) { siapkanMesin(); muatPengaturan_(); }
+  if (spreadsheet) { siapkanMesin(); muatPengaturan_(); APP.sinkron.hash = {}; }
   antre.sort(function (a, b) { return (PRIORITAS_IMPOR[a.an.jenis] - PRIORITAS_IMPOR[b.an.jenis]) || (a.nama < b.nama ? -1 : 1); });
-  antre.forEach(function (x) { hasil.push(imporGrid_(x.nama, x.grid, x.an)); });
+  var kirim = [];
+  antre.forEach(function (x) { var h = imporGrid_(x.nama, x.grid, x.an); hasil.push(h); if (h.ok) kirim.push({ nama: x.nama, grid: x.grid }); });
+  if (kirim.length) antreOp('apiImporApp', [kirim]); // spreadsheet ikut diperbarui saat sinkron
   var ok = hasil.some(function (h) { return h.ok; });
   if (ok) {
     var hit = hitungUlang_();
@@ -7061,6 +7290,226 @@ function muatDataLensa() {
 
 function bacaTabAman(nama) {
   try { return bacaTab_(nama).data; } catch (e) { return []; }
+}
+
+/* === 35-sinkron.js === */
+/* ----------------------------------------------------------------------
+ *  Sinkron dengan spreadsheet LENSA PK (LENSA_PK.gs 1.15+, deployment "Siapa saja" + KUNCI).
+ *  - Setiap tindakan tulis dijalankan di perangkat dulu (langsung tampil, juga tanpa sinyal),
+ *    lalu dicatat di antrean dan dikirim ke server yang menjalankan FUNGSI YANG SAMA.
+ *  - Kirim dulu sampai antrean kosong, baru tarik tab yang berubah (sidik MD5 per tab).
+ *    Hasil tarik menggantikan tab di perangkat: spreadsheet tetap sumber kebenaran.
+ * ---------------------------------------------------------------------- */
+var FN_TULIS = ['apiSimpanPk', 'apiGeotag', 'apiKelompok', 'apiGantiKelompok', 'apiSimpanKontak', 'apiLepasKontak', 'apiSimpanPengurus',
+  'apiPkKontak', 'apiSatukanOrang', 'apiCatat', 'apiSimpanTemplat', 'apiHapusTemplat', 'apiCentang', 'apiCentangPk', 'apiSimpanJadwal', 'apiHitung', 'apiImporApp'];
+/** Hanya bisa di server (butuh internet / spreadsheet lain). */
+var FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg'];
+var SINK = { janji: null, tunda: null, setelah: null, berjalan: false };
+
+function sinkronAktif() { return !!(APP.sinkron && APP.sinkron.url && APP.sinkron.kunci); }
+function idOp() { return 'O' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+/** Jalankan fungsi LENSA di perangkat; tindakan tulis masuk antrean sinkron. */
+function jalankan(fn, args) {
+  var f = FUNGSI_LENSA[fn];
+  if (!f) throw new Error('Fungsi tidak tersedia di aplikasi: ' + fn);
+  var salin = JSON.parse(JSON.stringify(args || []));
+  var r = f.apply(null, args || []);
+  if (FN_TULIS.indexOf(fn) >= 0) antreOp(fn, salin);
+  else simpanNanti();
+  return r;
+}
+function antreOp(fn, args) {
+  APP.sinkron.antre.push({ cid: idOp(), fn: fn, args: args, t: Date.now() });
+  simpanNanti();
+  if (sinkronAktif()) jadwalSinkron(fn === 'apiImporApp' ? 500 : 3000);
+}
+function jumlahAntre() { return (APP.sinkron.antre || []).length; }
+
+function jadwalSinkron(jeda) {
+  clearTimeout(SINK.tunda);
+  SINK.tunda = setTimeout(function () { sinkronkan().catch(function () { /* galat disimpan di APP.sinkron.galat */ }); }, jeda || 0);
+}
+
+async function panggilServer(isi, url, kunci) {
+  var r;
+  try {
+    r = await fetch(url || APP.sinkron.url, {
+      method: 'POST', redirect: 'follow', cache: 'no-store',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ kunci: kunci || APP.sinkron.kunci, versiApp: VERSI_APP }, isi))
+    });
+  } catch (e) { throw new Error('Tidak terhubung ke internet / server.'); }
+  if (!r.ok) throw new Error('Server sinkron menjawab ' + r.status);
+  var teks = await r.text(), j;
+  try { j = JSON.parse(teks); } catch (e) { throw new Error(/<html/i.test(teks) ? 'Alamat sinkron salah, atau deployment belum diatur "Siapa saja".' : 'Jawaban server tidak terbaca.'); }
+  if (!j.ok) throw new Error(j.galat || 'Sinkron gagal');
+  return j;
+}
+
+/** Potong antrean per kiriman (impor laporan bisa besar). */
+function ambilBatch(antre) {
+  var out = [], uk = 0;
+  for (var i = 0; i < antre.length; i++) {
+    var n = JSON.stringify(antre[i]).length;
+    if (out.length && (uk + n > 3500000 || out.length >= 60)) break;
+    out.push(antre[i]); uk += n;
+  }
+  return out;
+}
+
+function nilaiDariServer(v) { return v && typeof v === 'object' && v.$d !== undefined ? new Date(v.$d) : v; }
+function gantiTabDariServer(tab) {
+  Object.keys(tab).forEach(function (nama) {
+    var baris = tab[nama].map(function (r) { return r.map(nilaiDariServer); });
+    var ada = GAS.tab.filter(function (x) { return x.nama === nama; })[0];
+    if (ada) ada.baris = baris; else GAS.tab.push(new GasLembar(nama, baris));
+  });
+  _PEMETAAN = null; _SS = null;
+  muatPengaturan_();
+  gasSentuh();
+}
+
+/** Kirim antrean, lalu tarik tab yang berubah. Hasil {kirim, gagal, tab}. */
+function sinkronkan() {
+  if (!sinkronAktif()) return Promise.reject(new Error('Sinkron belum disambungkan.'));
+  if (SINK.janji) return SINK.janji;
+  clearTimeout(SINK.tunda);
+  SINK.berjalan = true;
+  if (SINK.saatMulai) SINK.saatMulai();
+  SINK.janji = (async function () {
+    var s = APP.sinkron, hasil = { kirim: 0, gagal: 0, tab: 0 };
+    try {
+      while (s.antre.length) {
+        var batch = ambilBatch(s.antre);
+        var j = await panggilServer({ aksi: 'jalankan', op: batch });
+        var peta = {};
+        (j.hasil || []).forEach(function (h) { peta[h.cid] = h; });
+        batch.forEach(function (op) {
+          var h = peta[op.cid];
+          if (!h) return;
+          if (h.ok) hasil.kirim++;
+          else { hasil.gagal++; s.gagal.unshift({ waktu: gasTanggal(new Date(), '', 'yyyy-MM-dd HH:mm'), fn: op.fn, galat: h.galat }); s.gagal = s.gagal.slice(0, 20); s.hash = {}; }
+        });
+        if (!batch.some(function (op) { return peta[op.cid]; })) throw new Error('Server tidak memproses kiriman.');
+        s.antre = s.antre.filter(function (op) { return !peta[op.cid]; });
+        await simpanSekarang();
+      }
+      var t = await panggilServer({ aksi: 'tab', hash: s.hash });
+      if (s.antre.length) { jadwalSinkron(1500); return hasil; } // ada tindakan baru selama menarik: ulang sebentar lagi
+      var nama = Object.keys(t.tab || {});
+      if (nama.length) gantiTabDariServer(t.tab);
+      hasil.tab = nama.length;
+      s.hash = t.hash || {}; s.sppg = t.sppg || null; s.urlSheet = t.url || ''; s.versiServer = t.versi || '';
+      s.terakhir = gasTanggal(new Date(), '', 'yyyy-MM-dd HH:mm'); s.galat = '';
+      await simpanSekarang();
+      if (SINK.setelah) SINK.setelah(hasil);
+      return hasil;
+    } catch (e) {
+      s.galat = e.message; simpanNanti();
+      throw e;
+    } finally {
+      SINK.janji = null; SINK.berjalan = false;
+      if (SINK.saatSelesai) SINK.saatSelesai();
+    }
+  })();
+  return SINK.janji;
+}
+
+/** Fungsi yang hanya jalan di server: dipanggil langsung (perlu sinyal). */
+async function panggilLangsung(fn, args) {
+  if (!sinkronAktif()) throw new Error('Fitur ini perlu sinkron ke spreadsheet (Data & pengaturan › Sinkron).');
+  var j = await panggilServer({ aksi: 'panggil', fn: fn, args: args || [] });
+  return j.nilai;
+}
+
+/* ---------- sambung ---------- */
+function buatKodeSambung() { return 'LENSA2.' + btoa(unescape(encodeURIComponent(JSON.stringify({ u: APP.sinkron.url, k: APP.sinkron.kunci })))); }
+function bacaKodeSambung(kode) {
+  try {
+    var o = JSON.parse(decodeURIComponent(escape(atob(String(kode).trim().replace(/^LENSA2\./, '')))));
+    return o && o.u && o.k ? { url: o.u, kunci: o.k } : null;
+  } catch (e) { return null; }
+}
+/** Uji alamat + kunci, simpan, lalu sinkron penuh (data perangkat diganti data spreadsheet; antrean dikirim dulu). */
+async function sambungSinkron(url, kunci) {
+  url = String(url || '').trim(); kunci = String(kunci || '').trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(url)) throw new Error('Alamat harus berbentuk https://script.google.com/macros/s/…/exec');
+  if (!kunci) throw new Error('Kunci kosong.');
+  var j = await panggilServer({ aksi: 'cek' }, url, kunci);
+  APP.sinkron.url = url; APP.sinkron.kunci = kunci; APP.sinkron.hash = {}; APP.sinkron.galat = '';
+  await simpanSekarang();
+  var h = await sinkronkan();
+  return { versi: j.versi, kode: j.kode, hasil: h };
+}
+async function putusSinkron() {
+  APP.sinkron.url = ''; APP.sinkron.kunci = ''; APP.sinkron.hash = {};
+  await simpanSekarang();
+}
+
+/* === 36-layar-kunci.js === */
+/* ----------------------------------------------------------------------
+ *  Layar PIN (dipakai tampilan komputer dan tampilan HP). Berdiri sendiri: gaya inline.
+ * ---------------------------------------------------------------------- */
+function layarPin(opsi) {
+  opsi = opsi || {};
+  return new Promise(function (selesai) {
+    var lap = document.createElement('div');
+    lap.setAttribute('role', 'dialog'); lap.setAttribute('aria-modal', 'true'); lap.setAttribute('aria-label', opsi.judul || 'Masukkan PIN');
+    lap.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#1F3E8C;display:flex;align-items:center;justify-content:center;padding:20px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif';
+    lap.innerHTML = '<form style="background:#fff;border-radius:16px;padding:24px 22px;width:100%;max-width:340px;box-shadow:0 10px 30px rgba(0,0,0,.25);color:#1B2430">' +
+      '<div style="font-weight:800;font-size:20px;color:#1F3E8C">LENSA PK</div>' +
+      '<div style="margin:6px 0 16px;font-size:14px;color:#5B6470">' + (opsi.pesan || 'Data di perangkat ini terkunci. Masukkan PIN.') + '</div>' +
+      '<input type="password" inputmode="numeric" autocomplete="off" pattern="[0-9]*" maxlength="12" aria-label="PIN" style="width:100%;font-size:26px;letter-spacing:8px;text-align:center;padding:12px;border:1.5px solid #C9CFDA;border-radius:10px;box-sizing:border-box">' +
+      (opsi.ulang ? '<input type="password" inputmode="numeric" autocomplete="off" pattern="[0-9]*" maxlength="12" aria-label="Ulangi PIN" placeholder="ulangi" style="margin-top:10px;width:100%;font-size:26px;letter-spacing:8px;text-align:center;padding:12px;border:1.5px solid #C9CFDA;border-radius:10px;box-sizing:border-box">' : '') +
+      '<div data-galat style="min-height:20px;margin-top:8px;font-size:13px;color:#BD3B33"></div>' +
+      '<button type="submit" style="width:100%;margin-top:6px;padding:12px;font-size:16px;font-weight:700;border:0;border-radius:10px;background:#1F3E8C;color:#fff">' + (opsi.tombol || 'Buka') + '</button>' +
+      (opsi.batal ? '<button type="button" data-batal style="width:100%;margin-top:8px;padding:10px;font-size:14px;border:1px solid #C9CFDA;border-radius:10px;background:#fff;color:#1B2430">Batal</button>' : '') +
+      (opsi.lupa ? '<button type="button" data-lupa style="width:100%;margin-top:14px;padding:6px;font-size:13px;border:0;background:none;color:#5B6470;text-decoration:underline">Lupa PIN? Hapus data di perangkat ini</button>' : '') +
+      '</form>';
+    document.body.appendChild(lap);
+    var f = lap.querySelector('form'), inp = lap.querySelectorAll('input'), gal = lap.querySelector('[data-galat]'), salah = 0;
+    setTimeout(function () { inp[0].focus(); }, 50);
+    var tutup = function (v) { lap.remove(); selesai(v); };
+    if (opsi.batal) lap.querySelector('[data-batal]').onclick = function () { tutup(null); };
+    if (opsi.lupa) lap.querySelector('[data-lupa]').onclick = async function () {
+      if (!confirm('Hapus SEMUA data LENSA di perangkat ini? Data di spreadsheet tidak terhapus; setelah itu sambungkan sinkron lagi untuk menarik data.')) return;
+      await hapusSemua(); tutup({ dihapus: true });
+    };
+    f.onsubmit = async function (ev) {
+      ev.preventDefault();
+      var pin = inp[0].value.trim();
+      if (!/^\d{4,12}$/.test(pin)) { gal.textContent = 'PIN 4–12 angka.'; return; }
+      if (opsi.ulang && inp[1].value.trim() !== pin) { gal.textContent = 'PIN tidak sama.'; return; }
+      if (!opsi.cek) return tutup(pin);
+      var tb = f.querySelector('[type=submit]'); tb.disabled = true; gal.textContent = 'Memeriksa…'; gal.style.color = '#5B6470';
+      var ok = false;
+      try { ok = await opsi.cek(pin); } catch (e) { ok = false; }
+      if (ok) return tutup(pin);
+      salah++; inp[0].value = ''; gal.style.color = '#BD3B33';
+      var jeda = salah >= 5 ? Math.min(60, (salah - 4) * 10) : 0;
+      gal.textContent = 'PIN salah.' + (jeda ? ' Tunggu ' + jeda + ' detik.' : '');
+      setTimeout(function () { tb.disabled = false; inp[0].focus(); if (jeda) gal.textContent = 'PIN salah.'; }, jeda * 1000);
+    };
+  });
+}
+
+/** Buka data perangkat. Hasil: 'kosong' | 'ada'. Menampilkan layar PIN bila terkunci. */
+async function bukaPerangkat() {
+  var st = await muatPerangkat();
+  if (st !== 'terkunci') return st;
+  var h = await layarPin({ cek: bukaDenganPin, lupa: true });
+  return h && h.dihapus ? 'kosong' : 'ada';
+}
+
+/** Terkunci lagi bila halaman ditinggal lama (mis. HP tergeletak). */
+var KUNCI_OTOMATIS_MS = 15 * 60000, ditinggal = 0;
+function pasangKunciOtomatis() {
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') { ditinggal = Date.now(); if (SIMPAN.tertunda) simpanSekarang(); return; }
+    if (pinAktif() && ditinggal && Date.now() - ditinggal > KUNCI_OTOMATIS_MS) { location.reload(); return; }
+    cekPerubahanLuar();
+  });
 }
 
 /* === 40-model.js === */
@@ -7159,7 +7608,7 @@ function hitungDasbor(d) {
 /* ----------------------------------------------------------------------
  *  Tampilan komputer (menu samping + dasbor) dan HP (navigasi bawah).
  * ---------------------------------------------------------------------- */
-var UI = { tab: 'dasbor', cari: '', saringStatus: '', laci: null, M: null };
+var UI = { tab: 'dasbor', cari: '', saringStatus: '', laci: null, M: null, tanyaWa: null };
 var KLIK = {};
 function $(s) { return document.querySelector(s); }
 var tToast = null;
@@ -7179,7 +7628,10 @@ var IKON = {
   unggah: '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
   unduh: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 19h14"/>',
   tutup: '<path d="M6 6l12 12M18 6L6 18"/>',
-  wa: '<path d="M21 12a8 8 0 0 1-11.8 7L4 20.5l1.6-4.8A8 8 0 1 1 21 12z"/>'
+  wa: '<path d="M21 12a8 8 0 0 1-11.8 7L4 20.5l1.6-4.8A8 8 0 1 1 21 12z"/>',
+  sinkron: '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/>',
+  hp: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+  kunci: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'
 };
 function ikon(k) { return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + IKON[k] + '</svg>'; }
 
@@ -7195,10 +7647,29 @@ function render() {
   var d = S.data, nav = [['dasbor', 'Dasbor'], ['pk', 'Perusahaan'], ['data', 'Data & pengaturan']];
   $('#nav').innerHTML = nav.map(function (x) { return '<button data-a="tab" data-v="' + x[0] + '"' + (UI.tab === x[0] ? ' aria-current="page"' : '') + '>' + ikon(x[0]) + '<span>' + x[1] + '</span></button>'; }).join('');
   var per = d && d.hariIniData ? (d.hariIniData.periodeItw || '') : '';
-  $('#sisiBawah').innerHTML = '<div>Data ITW/ITB per ' + e(per ? tglIndo(per) : '—') + '</div><div>' + (SIMPAN.jenis === 'idb' ? 'Tersimpan di perangkat ini' : 'Belum tersimpan') + '</div><div>Versi ' + VERSI_APP + ' · mesin LENSA ' + e(d ? d.versi : '') + '</div>';
+  $('#sisiBawah').innerHTML = '<div id="statusSinkron"></div><div>Data ITW/ITB per ' + e(per ? tglIndo(per) : '—') + '</div><div>' + (SIMPAN.jenis === 'idb' ? 'Tersimpan di perangkat ini' + (pinAktif() ? ' · terkunci PIN' : '') : 'Belum tersimpan') + '</div><div><a href="hp.html" style="color:inherit">Buka tampilan HP</a> · Versi ' + VERSI_APP + ' · mesin ' + e(d ? d.versi : '') + '</div>';
+  renderStatusSinkron();
   var isi = UI.tab === 'pk' ? layarPk() : UI.tab === 'data' ? layarData() : layarDasbor();
   $('#isi').innerHTML = isi;
   renderLaci();
+}
+
+/** Status sinkron di menu samping + tombol di kepala halaman (diperbarui tanpa render ulang penuh). */
+function teksStatusSinkron() {
+  var s = APP.sinkron || {};
+  if (!sinkronAktif()) return 'Belum sinkron ke spreadsheet';
+  if (SINK.berjalan) return 'Menyinkronkan…';
+  return (s.galat ? 'Sinkron tertunda: ' + s.galat : 'Sinkron ' + (s.terakhir ? s.terakhir.slice(11) + (s.terakhir.slice(0, 10) === gasTanggal(new Date(), '', 'yyyy-MM-dd') ? '' : ' ' + tglIndo(s.terakhir.slice(0, 10))) : '–')) +
+    (jumlahAntre() ? ' · ' + jumlahAntre() + ' belum terkirim' : '');
+}
+function renderStatusSinkron() {
+  var el = document.getElementById('statusSinkron');
+  if (el) el.innerHTML = sinkronAktif() ? '<button class="btn-sinkron" data-a="sinkronSekarang"' + (SINK.berjalan ? ' disabled' : '') + '>' + ikon('sinkron') + 'Sinkron sekarang</button><span class="kecil">' + e(teksStatusSinkron()) + '</span>' : '<span class="kecil">' + e(teksStatusSinkron()) + '</span>';
+  Array.prototype.forEach.call(document.querySelectorAll('[data-status-sinkron]'), function (x) { x.textContent = teksStatusSinkron(); });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-a="sinkronSekarang"]'), function (x) { x.disabled = !!SINK.berjalan; });
+}
+function tombolSinkron() {
+  return sinkronAktif() ? '<button class="btn" data-a="sinkronSekarang" title="' + e(teksStatusSinkron()) + '">' + ikon('sinkron') + 'Sinkron sekarang</button>' : '';
 }
 
 /* ================= DASBOR ================= */
@@ -7261,7 +7732,7 @@ function layarDasbor() {
   }
   var M = UI.M = hitungDasbor(d), s = M.s, n = M.n, h = M.h;
   var out = '<div class="kepala"><div><h1>Kepatuhan iuran binaan</h1><div class="sub">' + e(namaBln(M.bulan)) + ' · data ITW/ITB per ' + e(tglIndo(h.periodeItw || '')) + ' · ' + angkaID(n) + ' PK · ' + angkaID(M.tk) + ' tenaga kerja' + (h.umurItw > 7 ? ' · <b style="color:#B4442A">laporan sudah ' + h.umurItw + ' hari</b>' : '') + '</div></div>' +
-    '<div class="kepala-aksi"><button class="btn" data-a="pilihBerkas">' + ikon('unggah') + 'Impor laporan</button></div></div>';
+    '<div class="kepala-aksi">' + tombolSinkron() + '<button class="btn" data-a="pilihBerkas">' + ikon('unggah') + 'Impor laporan</button></div></div>';
   out += '<div class="grid-kpi">' +
     kpi('TEPAT BULAN (ITB)', persen(s.itb, n) + '%', angkaID(s.itb) + ' dari ' + angkaID(n) + ' PK' + (s.target ? ' · target ' + persen(s.target, n) + '%' : ''), '#1F7A56', klik('Sudah ITB', M.itb)) +
     kpi('TEPAT WAKTU (ITW)', persen(s.itw, n) + '%', angkaID(s.itw) + ' dari ' + angkaID(n) + ' PK', '', klik('ITW (koefisien ≤ 1)', M.pk.filter(function (p) { return String(p.itw).toUpperCase() === 'Y'; }))) +
@@ -7328,12 +7799,41 @@ function layarPk() {
 }
 
 /* ================= DATA ================= */
+function kartuSinkron() {
+  var sk = APP.sinkron || {};
+  if (!sinkronAktif()) {
+    return kartu('Sinkron ke spreadsheet LENSA PK', 'agar HP, komputer, dan spreadsheet berisi data yang sama',
+      '<div class="catatan" style="margin-top:0">Sekali saja di spreadsheet: menu <b>LENSA PK › LENSA 2.0 (aplikasi) › Siapkan sinkron &amp; lihat kunci</b>, lalu buat <b>Deployment baru › Aplikasi web</b> (Jalankan sebagai: Saya · Akses: <b>Siapa saja</b>). Salin alamat /exec dan kuncinya ke sini.</div>' +
+      '<div id="kartuSinkron" class="form-sinkron"><label class="field">Alamat aplikasi web (…/exec)<input class="inp" data-f="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>' +
+      '<label class="field">Kunci sinkron<input class="inp" data-f="kunci" type="password" autocomplete="off"></label>' +
+      '<div class="sub" style="margin:4px 0">atau, dari perangkat yang sudah tersambung:</div><label class="field">Kode sambung<input class="inp" data-f="kode" placeholder="LENSA2.…" autocomplete="off"></label>' +
+      '<div class="aksi-baris"><button class="btn utama" data-a="sambung">Sambungkan</button></div>' +
+      '<div class="catatan">Saat tersambung, data di perangkat ini diganti dengan data spreadsheet (catatan yang belum terkirim dikirim lebih dulu).</div></div>');
+  }
+  var gagal = (sk.gagal || []).slice(0, 5);
+  return kartu('Sinkron ke spreadsheet LENSA PK', 'otomatis saat dibuka, tiap 5 menit, dan sesudah setiap catatan',
+    '<div class="kv"><span>Status</span><b data-status-sinkron>' + e(teksStatusSinkron()) + '</b><span>Mesin di spreadsheet</span><b>' + e(sk.versiServer || '–') + '</b>' +
+    '<span>Belum terkirim</span><b>' + jumlahAntre() + ' tindakan</b></div>' +
+    (gagal.length ? '<div class="daftar-hasil">' + gagal.map(function (x) { return '<div class="gagal">' + e(x.waktu) + ' · ' + e(x.fn) + ': ' + e(x.galat) + '</div>'; }).join('') + '</div>' : '') +
+    '<div class="aksi-baris"><button class="btn utama" data-a="sinkronSekarang">' + ikon('sinkron') + 'Sinkron sekarang</button><button class="btn" data-a="salinKode">Salin kode sambung untuk perangkat lain</button>' +
+    (sk.urlSheet ? '<a class="btn" href="' + e(sk.urlSheet) + '" target="_blank" rel="noopener">Buka spreadsheet</a>' : '') +
+    '<button class="btn bahaya" data-a="putus">Putuskan di perangkat ini</button></div>' +
+    '<div class="catatan">Kode sambung berisi kunci: kirim hanya ke perangkat Anda sendiri.</div>');
+}
+function kartuPin() {
+  return kartu('PIN perangkat', pinAktif() ? 'aktif · data di perangkat ini tersandi (AES-256)' : 'belum dipasang',
+    '<div class="aksi-baris">' + (pinAktif()
+      ? '<button class="btn" data-a="gantiPin">' + ikon('kunci') + 'Ganti PIN</button><button class="btn" data-a="kunciSekarang">Kunci sekarang</button><button class="btn bahaya" data-a="lepasPin">Lepas PIN</button>'
+      : '<button class="btn utama" data-a="pasangPin">' + ikon('kunci') + 'Pasang PIN</button>') + '</div>' +
+    '<div class="catatan">Dengan PIN, isi data (PK, kontak, catatan, kunci sinkron) tersandi di perangkat dan terkunci lagi setelah 15 menit ditinggal. Lupa PIN = hapus data perangkat lalu sinkron ulang; data di spreadsheet aman. Sangat dianjurkan di HP.</div>');
+}
 function layarData() {
-  var d = S.data, log = (APP.impor || []).slice(0, 15);
-  return '<div class="kepala"><div><h1>Data &amp; pengaturan</h1><div class="sub">Semua data hanya di perangkat ini. Tahap 1: baca & hitung; sinkron antar-perangkat menyusul (tahap 2).</div></div></div>' +
-    '<div class="lepas" data-a="pilihBerkas">' + ikon('unggah') + '<b>Impor laporan atau pindahkan data LENSA PK</b><p>Laporan sistem: ITW/ITB, Monitoring, Data Badan Usaha, KPI084/085, Kartu Iuran (CSV/XLSX, boleh beberapa sekaligus) — hanya baris kode pembina ' + e(P_('kode_pembina') || 'HA187580') + ' yang disimpan.<br>Pindah data: di spreadsheet LENSA PK pilih <b>File › Download › Microsoft Excel (.xlsx)</b>, lalu pilih file itu di sini.</p><button class="btn utama">Pilih file</button></div>' +
+  var log = (APP.impor || []).slice(0, 15);
+  return '<div class="kepala"><div><h1>Data &amp; pengaturan</h1><div class="sub">Data tersimpan di perangkat ini' + (sinkronAktif() ? ' dan bersinkron dengan spreadsheet LENSA PK milik Anda.' : '.') + ' Kode aplikasi publik, data tidak.</div></div><div class="kepala-aksi"><a class="btn" href="hp.html">' + ikon('hp') + 'Tampilan HP</a></div></div>' +
+    kartuSinkron() + kartuPin() +
+    '<div class="lepas" data-a="pilihBerkas">' + ikon('unggah') + '<b>Impor laporan</b><p>Laporan sistem: ITW/ITB, Monitoring, Data Badan Usaha, KPI084/085, Kartu Iuran (CSV/XLSX, boleh beberapa sekaligus) — hanya baris kode pembina ' + e(P_('kode_pembina') || 'HA187580') + ' yang disimpan.' + (sinkronAktif() ? ' Laporan juga dikirim ke spreadsheet saat sinkron.' : '<br>Tanpa sinkron: pindahkan data lama lewat <b>File › Download › Microsoft Excel (.xlsx)</b> di spreadsheet, lalu pilih file itu di sini.') + '</p><button class="btn utama">Pilih file</button></div>' +
     (log.length ? kartu('Hasil impor', '', '<div class="daftar-hasil">' + log.map(function (x) { return '<div class="' + (x.info ? 'info' : x.ok ? 'ok' : 'gagal') + '">' + e(x.waktu) + ' · ' + (x.info ? '' : x.ok ? '✓ ' : '✗ ') + e(x.ringkas) + '</div>'; }).join('') + '</div>') : '') +
-    kartu('Cadangan', 'file .json berisi seluruh data perangkat ini', '<div class="aksi-baris"><button class="btn" data-a="unduhCadangan">' + ikon('unduh') + 'Unduh cadangan</button><button class="btn" data-a="pilihCadangan">' + ikon('unggah') + 'Pulihkan dari cadangan</button><button class="btn bahaya" data-a="hapusSemua">Hapus semua data di perangkat ini</button></div>');
+    kartu('Cadangan', 'file .json berisi seluruh data perangkat ini' + (pinAktif() ? ' (terkunci PIN yang sama)' : ''), '<div class="aksi-baris"><button class="btn" data-a="unduhCadangan">' + ikon('unduh') + 'Unduh cadangan</button><button class="btn" data-a="pilihCadangan">' + ikon('unggah') + 'Pulihkan dari cadangan</button><button class="btn bahaya" data-a="hapusSemua">Hapus semua data di perangkat ini</button></div>');
 }
 
 /* ================= LACI (daftar PK / rincian PK) ================= */
@@ -7346,13 +7846,15 @@ function renderLaci() {
     var tot = L.daftar.reduce(function (t, p) { return t + (+p.tunggakan || 0); }, 0);
     h += '<div class="sub">' + L.daftar.length + ' PK' + (tot ? ' · tunggakan ' + rp(tot) : '') + '</div><div class="daftar">' + L.daftar.slice(0, 400).map(barisPk).join('') + '</div>';
   } else {
-    var p = L.p, r = rincian(p), k = kontakUtama(p), ss = st(p);
+    var p = L.p, r = rincian(p), k = kontakUtama(p), ss = st(p), q = UI.tanyaWa;
+    if (q && q.npp === String(p.npp)) h += '<div class="tanya-wa" role="status"><span>' + (q.tercatat ? '✓ Tercatat di LOG_INTERAKSI' + (sinkronAktif() ? ' · dikirim ke spreadsheet saat sinkron' : '') : 'Sudah terkirim ke <b>' + e(q.nama) + '</b>?') + '</span>' +
+      (q.tercatat ? '<button class="btn kecil" data-a="waTutup">Tutup</button>' : '<button class="btn kecil utama" data-a="waYa">Ya, catat</button><button class="btn kecil" data-a="waTutup">Belum</button>') + '</div>';
     h += '<div class="kartu"><div class="kv"><span>Status</span><b style="color:' + warnaStrip(ss.k) + '">' + e(p.status) + '</b><span>Koefisien</span><b>' + e(p.koef) + '</b><span>Iuran terakhir</span><b>' + rp(p.iuran) + '</b><span>Posting terakhir</span><b>' + e(p.blthPosting || '–') + '</b><span>Tenaga kerja</span><b>' + e(p.tk || '–') + '</b><span>Segmen · skala</span><b>' + e([p.segmen, p.skala].filter(Boolean).join(' · ') || '–') + '</b><span>Kode iuran</span><b>' + e(kodeIuran(p) || '–') + '</b></div>' +
       (p.aksi ? '<div class="catatan">Saran LENSA: ' + e(p.aksi) + '</div>' : '') + '</div>';
     h += '<div class="kartu"><h3>Kontak</h3>' + ((p.kontak || []).length ? (p.kontak || []).map(function (x) {
       return '<div class="baris-kontak"><span><b>' + e(x.nama) + '</b>' + (x.utama ? ' <span class="pil">utama</span>' : '') + '<br><span class="sub">' + e([x.jabatan, x.hp].filter(Boolean).join(' · ')) + '</span></span>' +
-        (x.wa ? '<span class="aksi-baris"><a class="btn kecil" target="_blank" rel="noopener" href="' + e(urlWa(x.wa, templat('sapa', { sapaan: x.sapaan || 'Bapak/Ibu', pk: p.namaResmi }))) + '">' + ikon('wa') + 'Sapa</a>' +
-          (r ? '<a class="btn kecil wa" target="_blank" rel="noopener" href="' + e(urlWa(x.wa, pesanRincian(x, [{ p: p, r: r }]))) + '">' + ikon('wa') + 'Tagihan</a>' : '') + '</span>' : '<span class="sub">tanpa WA</span>') + '</div>';
+        (x.wa ? '<span class="aksi-baris"><a class="btn kecil" target="_blank" rel="noopener" data-wa="Sapa" data-id="' + e(x.id) + '" data-nama="' + e(x.nama) + '" href="' + e(urlWa(x.wa, templat('sapa', { sapaan: x.sapaan || 'Bapak/Ibu', pk: p.namaResmi }))) + '">' + ikon('wa') + 'Sapa</a>' +
+          (r ? '<a class="btn kecil wa" target="_blank" rel="noopener" data-wa="Tagihan" data-id="' + e(x.id) + '" data-nama="' + e(x.nama) + '" href="' + e(urlWa(x.wa, pesanRincian(x, [{ p: p, r: r }]))) + '">' + ikon('wa') + 'Tagihan</a>' : '') + '</span>' : '<span class="sub">tanpa WA</span>') + '</div>';
     }).join('') : '<div class="kosong">Belum ada kontak. Kontak terisi dari Data Badan Usaha atau data LENSA yang dipindah.</div>') + '</div>';
     if (r) h += '<div class="kartu"><h3>Rincian tunggakan · Rp ' + ang(r.totalTagihan) + '</h3>' + tabelRincian(r) + '<img class="gambar-rinci" alt="Rincian tagihan ' + e(p.npp) + '" src="' + gambarRincian(p, r) + '"><div class="aksi-baris"><button class="btn" data-a="unduhRinci" data-v="' + e(p.npp) + '">' + ikon('unduh') + 'Unduh gambar</button></div></div>';
     else h += '<div class="kartu kosong">Tidak ada tagihan: iuran sudah terbayar sampai bulan ini.</div>';
@@ -7375,7 +7877,53 @@ var AKSI = {
   pilihBerkas: function () { $('#pilihBerkas').click(); },
   pilihCadangan: function () { $('#pilihCadangan').click(); },
   unduhCadangan: function () { unduhCadangan(); kabar('Cadangan diunduh. Simpan di tempat aman: berisi data PK dan kontak.', 4000); },
-  hapusSemua: async function () { if (!confirm('Hapus semua data LENSA di perangkat ini? Spreadsheet LENSA PK tidak ikut terhapus.')) return; await hapusSemua(); S.data = null; render(); kabar('Data di perangkat ini dihapus.'); },
+  hapusSemua: async function () { if (!confirm('Hapus semua data LENSA di perangkat ini (termasuk PIN dan sambungan sinkron)? Spreadsheet LENSA PK tidak ikut terhapus.')) return; await hapusSemua(); S.data = null; render(); kabar('Data di perangkat ini dihapus.'); },
+  sinkronSekarang: function () {
+    if (!navigator.onLine) { kabar('Tanpa sinyal. Catatan tersimpan di perangkat dan dikirim saat sinyal kembali.', 4000); return; }
+    kabar('Menyinkronkan dengan spreadsheet…', 8000);
+    sinkronkan().then(function (h) {
+      kabar('Sinkron selesai' + (h.kirim ? ' · ' + h.kirim + ' tindakan terkirim' : '') + (h.gagal ? ' · ' + h.gagal + ' ditolak (lihat Data)' : '') + (h.tab ? ' · ' + h.tab + ' tab diperbarui' : ' · data sudah terbaru'), 4000);
+    }).catch(function (er) { kabar('Sinkron gagal: ' + er.message, 6000); renderStatusSinkron(); });
+  },
+  sambung: async function () {
+    var f = $('#kartuSinkron'), v = function (k) { return f.querySelector('[data-f="' + k + '"]').value.trim(); }, url = v('url'), kunci = v('kunci'), kode = v('kode');
+    if (kode) { var o = bacaKodeSambung(kode); if (!o) { kabar('Kode sambung tidak dikenali.'); return; } url = o.url; kunci = o.kunci; }
+    kabar('Menyambungkan… menarik seluruh data spreadsheet (bisa 10–60 detik)', 60000);
+    try {
+      var h = await sambungSinkron(url, kunci);
+      try { muatDataLensa(); } catch (x) { /* diam */ }
+      mulaiSinkronBerkala(); render();
+      kabar('Tersambung ke spreadsheet (mesin ' + h.versi + ') · ' + h.hasil.tab + ' tab dimuat.', 5000);
+    } catch (er) { renderStatusSinkron(); render(); kabar('Gagal menyambung: ' + er.message, 7000); }
+  },
+  salinKode: async function () {
+    try { await navigator.clipboard.writeText(buatKodeSambung()); kabar('Kode sambung disalin. Tempel hanya di perangkat Anda sendiri (berisi kunci).', 4500); }
+    catch (x) { prompt('Salin kode sambung ini (berisi kunci):', buatKodeSambung()); }
+  },
+  putus: async function () {
+    if (jumlahAntre() && !confirm(jumlahAntre() + ' tindakan belum terkirim ke spreadsheet. Tetap putuskan? (data di perangkat tetap ada)')) return;
+    await putusSinkron(); render(); kabar('Sinkron diputus di perangkat ini.');
+  },
+  pasangPin: async function () {
+    var pin = await layarPin({ judul: 'Pasang PIN', pesan: 'Buat PIN 4–12 angka untuk mengunci data LENSA di perangkat ini.', tombol: 'Pasang PIN', ulang: true, batal: true });
+    if (!pin) return;
+    await pasangPin(pin); render(); kabar('PIN terpasang. Data di perangkat ini sekarang tersandi.', 4000);
+  },
+  gantiPin: function () { AKSI.pasangPin(); },
+  lepasPin: async function () {
+    var pin = await layarPin({ pesan: 'Masukkan PIN sekarang untuk melepas kunci.', tombol: 'Lepas PIN', batal: true, cek: cobaPin });
+    if (!pin) return;
+    await lepasPin(); render(); kabar('PIN dilepas. Data di perangkat ini tidak lagi tersandi.', 4000);
+  },
+  kunciSekarang: async function () { await simpanSekarang(); location.reload(); },
+  waYa: function () {
+    var q = UI.tanyaWa; if (!q) return;
+    try {
+      jalankan('apiCatat', [{ npp: q.npp, jenis: 'WA', idPengurus: q.id, ringkasan: q.jenis === 'Tagihan' ? 'Rincian tagihan dikirim via WA' : 'Sapa via WA', tanggal: gasTanggal(new Date(), '', 'yyyy-MM-dd'), cid: idOp() }]);
+      q.tercatat = true; muatDataLensa(); renderLaci(); renderStatusSinkron();
+    } catch (er) { kabar('Gagal mencatat: ' + er.message, 5000); }
+  },
+  waTutup: function () { UI.tanyaWa = null; renderLaci(); },
   unduhRinci: function (v) {
     var img = $('#laci img.gambar-rinci'); if (!img) return;
     var b = atob(img.src.split(',')[1]), u = new Uint8Array(b.length);
@@ -7384,6 +7932,20 @@ var AKSI = {
   }
 };
 
+/** Periksa PIN tanpa mengganti kunci aktif (dipakai saat melepas PIN). */
+async function cobaPin(pin) {
+  var rek = await idbAmbil('lensa');
+  if (!rek || !rek.terkunci) return true;
+  try { await bukaSandi(rek, await kunciDariPin(pin, dariB64(rek.garam))); return true; } catch (e) { return false; }
+}
+var berkalaAktif = false;
+function mulaiSinkronBerkala() {
+  if (berkalaAktif) return;
+  berkalaAktif = true;
+  setInterval(function () { if (sinkronAktif() && document.visibilityState === 'visible' && navigator.onLine !== false) jadwalSinkron(0); }, 5 * 60000);
+  window.addEventListener('online', function () { if (sinkronAktif()) jadwalSinkron(500); });
+}
+
 async function prosesBerkas(files) {
   if (!files || !files.length) return;
   kabar('Membaca ' + files.length + ' file… mesin LENSA menghitung ulang', 6000);
@@ -7391,6 +7953,7 @@ async function prosesBerkas(files) {
   try {
     var hasil = await imporBerkas(files);
     muatDataLensa();
+    renderStatusSinkron();
     UI.tab = hasil.some(function (h) { return !h.ok; }) ? 'data' : UI.tab;
     render();
     kabar(hasil.filter(function (h) { return h.ok && !h.info; }).length + ' dari ' + hasil.filter(function (h) { return !h.info; }).length + ' file berhasil.', 4000);
@@ -7418,8 +7981,18 @@ function pasangPeristiwa() {
   $('#pilihBerkas').addEventListener('change', function (ev) { var f = Array.prototype.slice.call(ev.target.files); ev.target.value = ''; prosesBerkas(f); });
   $('#pilihCadangan').addEventListener('change', async function (ev) {
     var f = ev.target.files[0]; ev.target.value = ''; if (!f) return;
-    try { await pulihkanCadangan(f); muatDataLensa(); render(); kabar('Cadangan dipulihkan.'); } catch (e) { kabar('Gagal: ' + e.message, 5000); }
+    try {
+      await pulihkanCadangan(f, function () { return layarPin({ pesan: 'Cadangan ini terkunci. Masukkan PIN saat cadangan dibuat.', batal: true }); });
+      muatDataLensa(); render(); kabar('Cadangan dipulihkan.');
+    } catch (e) { kabar('Gagal: ' + e.message, 5000); }
   });
+  // tombol WA di rincian PK: setelah kembali dari WhatsApp tanyakan "Sudah terkirim?"
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest('a[data-wa]');
+    if (!a || !UI.laci || UI.laci.jenis !== 'pk') return;
+    UI.tanyaWa = { npp: String(UI.laci.p.npp), id: a.getAttribute('data-id'), nama: a.getAttribute('data-nama'), jenis: a.getAttribute('data-wa') };
+    setTimeout(renderLaci, 300);
+  }, true);
   ['dragover', 'drop'].forEach(function (t) {
     document.addEventListener(t, function (ev) {
       ev.preventDefault();
@@ -7431,12 +8004,24 @@ function pasangPeristiwa() {
 /* === 99-mulai.js === */
 /* ---------------- mulai ---------------- */
 async function mulai() {
+  // di HP langsung ke tampilan HP (aplikasi LENSA lengkap); dasbor tetap bisa dibuka lewat menu ⋮ › Tampilan komputer
+  if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches && !/[?&]pc\b/.test(location.search) && location.hash !== '#data') {
+    SIMPAN.db = await bukaIdb();
+    if (await idbAmbil('meta')) { location.replace('hp.html'); return; }
+  }
   pasangPeristiwa();
-  var ada = await muatPerangkat();
+  var st = await bukaPerangkat();
   GAS.setelahUbah = function () { /* simpan dilakukan setelah tiap proses selesai */ };
-  if (ada) { try { muatDataLensa(); } catch (e) { kabar('Data di perangkat tidak terbaca: ' + e.message, 6000); } }
+  if (st === 'ada') { try { muatDataLensa(); } catch (e) { kabar('Data di perangkat tidak terbaca: ' + e.message, 6000); } }
+  SIMPAN.setelahMuatUlang = function () { try { muatDataLensa(); } catch (e) { /* diam */ } render(); };
+  SINK.setelah = function (h) { if (h.tab) { try { muatDataLensa(); } catch (e) { /* diam */ } } render(); };
+  SINK.saatMulai = SINK.saatSelesai = function () { renderStatusSinkron(); };
+  pasangKunciOtomatis();
+  if (location.hash === '#data') UI.tab = 'data';
   render();
   daftarkanPwa();
+  mulaiSinkronBerkala();
+  if (sinkronAktif()) jadwalSinkron(800);
 }
 function daftarkanPwa() {
   if (location.protocol !== 'https:') return;
@@ -7446,7 +8031,7 @@ function daftarkanPwa() {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () { /* diam */ });
   } catch (e) { /* diam */ }
 }
-window.LensaPK = { GAS: GAS, S: S, UI: UI, muatDataLensa: muatDataLensa, hitungDasbor: hitungDasbor, imporBerkas: imporBerkas, simpanSekarang: simpanSekarang };
+window.LensaPK = { GAS: GAS, S: S, UI: UI, APP: function () { return APP; }, muatDataLensa: muatDataLensa, hitungDasbor: hitungDasbor, imporBerkas: imporBerkas, simpanSekarang: simpanSekarang, sinkronkan: sinkronkan, jalankan: jalankan };
 mulai();
 
 })();
