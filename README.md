@@ -8,7 +8,8 @@ spreadsheet LENSA PK milik Anda dan di browser perangkat Anda (tersandi bila PIN
 - `index.html` — satu aplikasi untuk komputer dan HP: aplikasi LENSA yang sama dengan versi Apps Script
   (Hari ini, Perusahaan, Grup, Jadwal, kontak, catat, templat, pesan massal) ditambah **Dasbor**, **Antrean WA**,
   dan **Data & pengaturan** (sinkron, PIN, impor, cadangan). Jalan walau tanpa sinyal.
-  - Komputer (layar ≥ 1100 px): menu di kiri, daftar di tengah, rincian PK di panel kanan.
+  - Komputer: tata letak sama dengan Monitor SPPG — menu kiri (≥ 1100 px; 760–1099 px menu ikon), isi di tengah
+    (maks 1320 px), rincian PK di laci kanan 560 px (tutup dengan ×, Esc, atau klik di luar laci).
   - HP: navigasi bawah seperti biasa; Dasbor, Antrean WA, dan Data ada di menu ⋮.
 - `hp.html` — hanya meneruskan ke `index.html` (untuk pintasan lama).
 
