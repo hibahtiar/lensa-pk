@@ -5,9 +5,12 @@ Layanan Evaluasi & Analisa Pemberi Kerja, versi aplikasi mandiri untuk komputer 
 **Kode di folder ini publik, tetapi tidak berisi data apa pun.** Data PK, kontak, dan catatan hanya ada di
 spreadsheet LENSA PK milik Anda dan di browser perangkat Anda (tersandi bila PIN dipasang).
 
-- `index.html` — tampilan komputer: dasbor, daftar perusahaan, rincian tagihan, impor laporan, sinkron, PIN.
-- `hp.html` — tampilan HP: aplikasi LENSA yang sama dengan versi Apps Script (Hari ini, Perusahaan, Grup, Jadwal),
-  tetapi jalan di HP walau tanpa sinyal. Di layar kecil `index.html` otomatis membuka `hp.html`.
+- `index.html` — satu aplikasi untuk komputer dan HP: aplikasi LENSA yang sama dengan versi Apps Script
+  (Hari ini, Perusahaan, Grup, Jadwal, kontak, catat, templat, pesan massal) ditambah **Dasbor**, **Antrean WA**,
+  dan **Data & pengaturan** (sinkron, PIN, impor, cadangan). Jalan walau tanpa sinyal.
+  - Komputer (layar ≥ 1100 px): menu di kiri, daftar di tengah, rincian PK di panel kanan.
+  - HP: navigasi bawah seperti biasa; Dasbor, Antrean WA, dan Data ada di menu ⋮.
+- `hp.html` — hanya meneruskan ke `index.html` (untuk pintasan lama).
 
 ## 1. Pasang di GitHub Pages (sekali)
 1. github.com → **New repository** → nama `lensa-pk` → **Public** → Create.
@@ -36,6 +39,13 @@ Tanpa sinyal: catatan tetap tersimpan di perangkat dan terkirim saat sinyal kemb
 Data & pengaturan › **Pasang PIN**. Isi data di perangkat lalu tersandi AES-256 dengan kunci dari PIN, dan
 terkunci lagi setelah 15 menit ditinggal. Lupa PIN → "Hapus data di perangkat ini" di layar PIN, lalu sambungkan
 ulang: data di spreadsheet tetap utuh.
+
+## Antrean WA (kirim berurutan)
+Menu **Antrean WA** → pilih daftar (Telat 2+, Telat 1, Belum bayar, Risiko migrasi, kelompok, atau pilih sendiri;
+dari Dasbor juga bisa: klik angka → **Kirim pesan berurutan**) → pilih templat → kirim.
+Setelah tiap pesan jawab **Sudah terkirim?**: **Ya, lanjut** mencatat di LOG_INTERAKSI dan langsung membuka WA kontak
+berikutnya. Di komputer satu tab WhatsApp dipakai ulang; **Enter** = sudah terkirim & lanjut, **Esc** = belum.
+Antrean yang belum selesai tersimpan di bagian **Sedang berjalan** dan bisa dilanjutkan kapan saja.
 
 ## Impor laporan harian
 Seret file laporan ke jendela aplikasi, atau Data & pengaturan › Pilih file: ITW/ITB, Monitoring, Data Badan Usaha,
