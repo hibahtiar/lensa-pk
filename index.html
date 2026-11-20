@@ -2453,7 +2453,7 @@ var CSS_PESAN_WA = "*{box-sizing:border-box}\n.modul-wa{font:15px/1.45 system-ui
  * ==========================================================================
  */
 
-var VERSI = '1.25';
+var VERSI = '1.26';
 var TZ = 'Asia/Jakarta';
 var _HARI_INI_UJI = null; // khusus pengujian; biarkan null
 
@@ -7902,11 +7902,14 @@ function jembatanSppg() {
   if (!kunci.tryLock(2000)) { h.galat = 'Putaran sebelumnya masih berjalan.'; return h; }
   try {
     muatPengaturan_();
-    var mon = SpreadsheetApp.openById(id);
-    terimaDariSppg_(mon, h);
-    var baruDipasang = pr.getProperty('SPPG_VERSI') !== VERSI; // versi skrip baru: periksa ulang semua PIC & catatan
-    h.keluar += kirimInfoSppg_();
-    h.keluar += kirimPerubahanSppg_(h.masuk > 0 || baruDipasang);
+    // 1.26 (LENSA Suite 3A): Monitor SPPG dilayani Hub → jembatan lama (SINKRON_SPPG ⇄ KE_LENSA) berhenti
+    if (!(typeof hubMonitorDiHub_ === 'function' && hubMonitorDiHub_())) {
+      var mon = SpreadsheetApp.openById(id);
+      terimaDariSppg_(mon, h);
+      var baruDipasang = pr.getProperty('SPPG_VERSI') !== VERSI; // versi skrip baru: periksa ulang semua PIC & catatan
+      h.keluar += kirimInfoSppg_();
+      h.keluar += kirimPerubahanSppg_(h.masuk > 0 || baruDipasang);
+    }
     // 1.23: laporan unggahan Monitor di Gudang Laporan KC yang belum sempat diolah LENSA (permintaan terputus)
     if (typeof hubOlahTertunda_ === 'function') { try { hubOlahTertunda_(); } catch (eH) { catatGalat_('hubOlahTertunda_', eH.message, VERSI, 'pemicu'); } }
     if (typeof hubSetelahLensa_ === 'function') { try { hubSetelahLensa_(); } catch (eK) { catatGalat_('hubSetelahLensa_', eK.message, VERSI, 'pemicu'); } }
@@ -8182,6 +8185,7 @@ function monitorLama_(batasVersi) {
   batasVersi = batasVersi || '1.6.0';
   if (_MONITOR_LAMA === null || typeof _MONITOR_LAMA !== 'object') _MONITOR_LAMA = {};
   if (_MONITOR_LAMA[batasVersi] !== undefined) return _MONITOR_LAMA[batasVersi];
+  if (typeof hubMonitorDiHub_ === 'function' && hubMonitorDiHub_()) return (_MONITOR_LAMA[batasVersi] = false); // 1.26: Monitor 2.0 lewat Hub, jembatan berhenti
   var hasil = true;
   try {
     var sh = SpreadsheetApp.openById(sppgProp_().getProperty('SPPG_ID')).getSheetByName('PERANGKAT');
@@ -8297,6 +8301,10 @@ function doPost(e) {
       if (typeof hubPintu_ !== 'function') throw new Error('Hub LENSA Suite belum dipasang di proyek LENSA PK (berkas Hub.gs).');
       hasil = hubPintu_(req);
     }
+    else if (req.app === 'monitor') { // 1.26 (LENSA Suite 3A): Monitor SPPG 2.0 sinkron lewat Hub (daftar akses Monitor sendiri)
+      if (typeof hubMonitorPintu_ !== 'function') throw new Error('Hub LENSA Suite 1.3 belum dipasang di proyek LENSA PK (berkas Hub.gs).');
+      hasil = hubMonitorPintu_(req);
+    }
     else if (req.aksi === 'gabung') hasil = aksesGabung_(req);
     else if (req.aksi === 'daftar') hasil = aksesDaftarKunci_(req);
     else {
@@ -8356,7 +8364,7 @@ function tabApp_(hashKlien) {
   var ss = ss_(), tab = {}, hash = {}, ukuran = 0;
   ss.getSheets().forEach(function (sh) {
     var n = sh.getName();
-    if (APP_TAB_LEWATI[n]) return;
+    if (APP_TAB_LEWATI[n] || /^(PERANGKAT|UNDANGAN|LOG_AKSES)_/.test(n) || n === 'PINDAH') return; // 1.26: daftar akses aplikasi lain (Hub) tidak pernah ke perangkat
     var v = nilaiTab_(sh), h = sidikTab_(v);
     hash[n] = h;
     if (hashKlien[n] !== h) { tab[n] = v; ukuran += JSON.stringify(v).length; }
@@ -8722,7 +8730,7 @@ function gambarRincian(p, r) {
  *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
  *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.7.0';
+var VERSI_APP = '2.7.1';
 var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
 function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, antre: [], gagal: [], galatAntre: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
@@ -10021,11 +10029,11 @@ function kartuAplikasi(a) {
   if (!j || j.ok === false) {
     return kartu(judul, 'tidak bisa dimuat', '<div class="kosong" style="color:#B4442A">' + e(j ? j.galat : 'Gagal') + '</div>' + (a.k === 'lensa' ? '' : formServer(a.k, srv)), '');
   }
-  var kl = j.kunciLama || {}, n = (j.perangkat || []).filter(function (p) { return p.status !== 'Dicabut'; }).length;
-  var sub = n + ' perangkat aktif' + (j.versi ? ' · server ' + e(j.versi) : '') + ' · ' +
-    (kl.berlaku ? 'KUNCI lama masih berlaku s.d. ' + e(waktuSingkat(kl.sampai)) : 'KUNCI lama sudah dimatikan');
+  var kl = j.kunciLama || {}, n = (j.perangkat || []).filter(function (p) { return p.status !== 'Dicabut'; }).length, diHub = !!(srv && srv.diHub);
+  var sub = n + ' perangkat aktif' + (diHub ? ' · dilayani Hub LENSA Suite' : (j.versi ? ' · server ' + e(j.versi) : '') + ' · ' +
+    (kl.berlaku ? 'KUNCI lama masih berlaku s.d. ' + e(waktuSingkat(kl.sampai)) : 'KUNCI lama sudah dimatikan'));
   var kanan = (kl.berlaku ? '<button class="btn kecil" data-a="matikanKunciLama" data-v="' + a.k + '">Matikan KUNCI lama</button>' : '') +
-    (a.k === 'lensa' ? '' : '<button class="btn kecil" data-a="ubahServer" data-v="' + a.k + '">Sambungan</button>');
+    (a.k === 'lensa' || diHub ? '' : '<button class="btn kecil" data-a="ubahServer" data-v="' + a.k + '">Sambungan</button>');
   return kartu(judul, sub, tabelPerangkat(a.k, j) + (AKS.serverDibuka === a.k ? formServer(a.k, srv) : ''), '<div class="aksi-baris" style="margin:0">' + kanan + '</div>');
 }
 function formServer(k, srv) {
