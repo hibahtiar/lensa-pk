@@ -2785,7 +2785,7 @@ var CSS_PESAN_WA = "*{box-sizing:border-box}\n.modul-wa{font:15px/1.45 system-ui
  * ==========================================================================
  */
 
-var VERSI = '1.28';
+var VERSI = '1.29';
 var TZ = 'Asia/Jakarta';
 var _HARI_INI_UJI = null; // khusus pengujian; biarkan null
 
@@ -4056,7 +4056,9 @@ function imporItw_(data, ctx) {
     if (catatan.length) salah.push(o.npp + ' (' + catatan.join(', ') + ')');
     rows.push(o);
   });
-  if (salah.length > Math.max(2, Math.floor(rows.length / 100))) {
+  // 1.29: kolom tertukar membuat banyak baris beda; selisih kecil (tanda ITW/ITB sistem untuk kasus khusus) diterima,
+  // tanda dari file yang dipakai dan NPP-nya dicatat di Cek angka kantor. Ditolak hanya bila lebih dari 10% baris beda.
+  if (salah.length > Math.max(5, Math.floor(rows.length / 10))) {
     throw new Error('Rumus ITW/ITB tidak cocok di ' + salah.length + ' dari ' + rows.length + ' baris, kemungkinan kolom tertukar. Contoh: ' +
       salah.slice(0, 3).join('; ') + '. Periksa tab PEMETAAN.');
   }
@@ -4079,7 +4081,7 @@ function imporItw_(data, ctx) {
   } else {
     cek += ' · rekap pembina tidak ada di file';
   }
-  if (salah.length) cek += ' · ' + salah.length + ' baris rumus berbeda: ' + salah.slice(0, 3).join('; ');
+  if (salah.length) cek += ' · ' + salah.length + ' baris tanda di file berbeda dengan rumus (tanda file dipakai): ' + salah.slice(0, 5).join('; ') + (salah.length > 5 ? '; …' : '');
   if (ibrBeda) cek += ' · ' + ibrBeda + ' baris kecukupan IBR dibulatkan berbeda (memakai angka laporan)';
 
   simpanSnapshot_('ITW_ITB', rows, function (o) { return String(o.periode) === periode; });
@@ -9070,7 +9072,7 @@ function gambarRincian(p, r) {
  *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
  *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.8.1';
+var VERSI_APP = '2.8.2';
 var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
 function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, antre: [], gagal: [], galatAntre: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
