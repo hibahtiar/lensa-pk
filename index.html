@@ -725,6 +725,700 @@ function gasMuatLembar(peta) {
   gasSentuh();
 }
 
+/* === 03-kit === */
+/* ======================================================================
+ *  KIT LENSA Suite · redaksi.js 1.0 — penyusun pesan WhatsApp bersama.
+ *  Dipakai di: mesin LENSA (Apps Script dan perangkat), aplikasi LENSA PK, Monitor SPPG.
+ *  Tanpa DOM, ES5. Pedoman: "Tahap 1 — Rancangan & Draf Pedoman Redaksi WA" (disetujui 20 Nov 2026).
+ *
+ *  Pustaka = daftar baris (sama dengan tab REDAKSI):
+ *    { id, jenis: 'Kalimat'|'Templat', tingkat: 'Umum'|'LENSA'|'Monitor', kunci, nama, keperluan,
+ *      sasaran, isi, aktif: 'Ya'|'Tidak', dipakai, terakhir_dipakai, diperbarui, catatan }
+ *  Tingkat: kalimat/templat khusus aplikasi menimpa yang Umum; templat boleh menulis kalimatnya sendiri.
+ *  Isi bawaan dipasang saat dibangun: KitRedaksi.pasangBawaan(<modul/pesan-wa/pustaka-bawaan.json>).
+ * ====================================================================== */
+var KitRedaksi = (function () {
+  'use strict';
+  var VERSI = '1.0';
+  var BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  var TINGKAT = ['Umum', 'LENSA', 'Monitor'];
+  var KEPERLUAN = ['Tagihan', 'Pengingat', 'Undangan', 'Sosialisasi', 'Pemutakhiran data', 'Ucapan', 'Laporan grup', 'Lainnya'];
+  /** Nama lama tetap berlaku (dibaca sebagai nama baru). */
+  var ALIAS = { pk: 'nama_subjek', sppg: 'nama_subjek', cv: 'nama_subjek', desa: 'nama_subjek', daftar_npp: 'daftar', catatan: 'catatan_rincian' };
+  var KALIMAT = [
+    ['pembuka', 'Salam pembuka'], ['sapa_singkat', 'Salam sapa singkat'], ['perkenalan', 'Perkenalan petugas'],
+    ['batas_bayar', 'Batas bayar'], ['cara_bayar', 'Cara bayar'], ['kalimat_sipp', 'Kalimat SIPP'], ['abaikan', 'Abaikan bila sudah bayar'],
+    ['kendala', 'Tawaran bantuan kendala'], ['terima_kasih', 'Terima kasih'], ['penutup', 'Penutup + tanda tangan'],
+    ['pembuka_grup', 'Salam pembuka grup'], ['penutup_grup', 'Penutup grup']
+  ];
+  var DATA = [
+    ['salam', 'Selamat pagi/siang/sore/malam'], ['sapaan', 'Sapaan PIC'], ['nama_pic', 'Nama lengkap PIC'], ['nama_subjek', 'Nama PK/SPPG'],
+    ['daftar', 'Daftar subjek 📌'], ['rincian', 'Rincian tagihan'], ['catatan_rincian', 'Catatan cara hitung'], ['total', 'Total tagihan'],
+    ['kode_iuran', 'Kode iuran'], ['npp', 'NPP'], ['bulan', 'Bulan ini'], ['bulan_lalu', 'Bulan lalu'], ['batas', 'Tanggal batas bayar'],
+    ['batas_hari', 'Hari batas (angka)'], ['tanggal', 'Tanggal hari ini'], ['tanggal_data', 'Tanggal data'], ['tk', 'Jumlah TK'],
+    ['program', 'Program'], ['petugas', 'Nama petugas'], ['kantor', 'Kantor']
+  ];
+  var KHUSUS = {
+    Monitor: [['yayasan', 'Nama yayasan'], ['rekap_pendaftaran', 'Rekap pendaftaran (grup)'], ['rekap_iuran', 'Rekap pembayaran (grup)'],
+      ['baru_bayar', 'Baru bayar tepat bulan (grup)'], ['daftar_nama', 'Daftar SPPG menunggak (grup)'],
+      ['daftar_setor', 'Menunggu iuran pertama (grup)'], ['daftar_belum', 'Belum terdaftar (grup)']]
+  };
+  var KOSONG = '\u0000';
+  var BAWAAN = [];
+
+  /* ---------------- format ---------------- */
+  function dua(n) { return ('0' + n).slice(-2); }
+  function rupiah2(n) {
+    var s = (Math.round((+n || 0) * 100) / 100).toFixed(2).split('.');
+    return s[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + s[1];
+  }
+  /** '2026-11-20' → '20 November 2026' */
+  function tanggalPanjang(iso) {
+    var p = String(iso || '').slice(0, 10).split('-');
+    return p.length === 3 && +p[1] ? (+p[2]) + ' ' + BULAN[+p[1] - 1] + ' ' + p[0] : '';
+  }
+  /** '2026-11' → 'November 2026' */
+  function bulanTahun(blth) {
+    var p = String(blth || '').split('-');
+    return p.length >= 2 && +p[1] ? BULAN[+p[1] - 1] + ' ' + p[0] : '';
+  }
+  function bulanGeser(blth, n) {
+    var p = String(blth || '').split('-'), i = (+p[0]) * 12 + (+p[1] - 1) + n;
+    return Math.floor(i / 12) + '-' + dua(i % 12 + 1);
+  }
+  function isoLokal(d) { d = d || new Date(); return d.getFullYear() + '-' + dua(d.getMonth() + 1) + '-' + dua(d.getDate()); }
+  function salamJam(jam) { return jam < 11 ? 'Selamat pagi' : jam < 15 ? 'Selamat siang' : jam < 18 ? 'Selamat sore' : 'Selamat malam'; }
+  function salamSekarang() { return salamJam(new Date().getHours()); }
+  function isiSalam(teks, salam) { return String(teks || '').replace(/\{salam\}/g, salam || salamSekarang()); }
+  /** Nomor HP → 628…; '' bila bukan nomor HP. */
+  function noWa(no) {
+    var s = String(no || '').replace(/\D/g, '');
+    if (!s) return '';
+    if (s.charAt(0) === '0') s = '62' + s.slice(1); else if (s.charAt(0) === '8') s = '62' + s;
+    return /^628\d{7,11}$/.test(s) ? s : '';
+  }
+  /** Tautan WhatsApp: selalu api.whatsapp.com (bukan wa.me) agar emoji utuh. {salam} diisi menurut jam saat ini. */
+  function urlWa(no, pesan) {
+    var n = noWa(no);
+    if (!n) return '';
+    return 'https://api.whatsapp.com/send?phone=' + n + (pesan ? '&text=' + encodeURIComponent(isiSalam(pesan)) : '');
+  }
+  function urlWaTanpaNomor(pesan) { return 'https://api.whatsapp.com/send?text=' + encodeURIComponent(isiSalam(pesan)); }
+  /** Nama huruf besar semua → Huruf Awal Besar; selain itu dibiarkan. */
+  function judulNama(s) {
+    s = String(s || '').replace(/\s+/g, ' ').trim();
+    if (!s || /[a-z]/.test(s)) return s;
+    return s.toLowerCase().replace(/(^|[\s\-'(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); });
+  }
+  /** Sapaan kosong → "Bapak/Ibu" + nama PIC; tanpa nama → "Bapak/Ibu". */
+  function sapaan(sapaanTersimpan, namaPic) {
+    var s = String(sapaanTersimpan || '').trim();
+    if (s) return s;
+    var n = judulNama(namaPic);
+    return n ? 'Bapak/Ibu ' + n : 'Bapak/Ibu';
+  }
+  function gabungNama(xs) {
+    xs = (xs || []).filter(function (x) { return x; });
+    return xs.length <= 1 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' dan ' + xs[xs.length - 1];
+  }
+
+  /* ---------------- blok bersama (sama di LENSA & Monitor) ---------------- */
+  /** Satu subjek: { nama, npp, div, kode, r: rincian (periode, rows[], total, dendaOn, dendaLalu, dendaLaluKet, ibr, totalTagihan, lebih) } */
+  function teksRincianSubjek(x, tanda) {
+    var r = x.r, L = [(tanda || '📌') + ' *' + x.nama + '*', 'NPP/Div: ' + x.npp + ' / ' + (x.div || '000') + ' · Periode ' + r.periode];
+    (r.rows || []).forEach(function (b, i) {
+      L.push((i + 1) + ') ' + b.periode + ': Rp ' + rupiah2(b.tagihan) + (b.denda ? ' + denda Rp ' + rupiah2(b.denda) + ' (2% × ' + Math.min(b.umur, 12) + ')' : ''));
+    });
+    if ((r.rows || []).length) {
+      L.push('Total iuran: Rp ' + rupiah2(r.total.piutang));
+      if (r.dendaOn) L.push('Total denda: Rp ' + rupiah2(r.total.dendaPiutang));
+    }
+    if (r.dendaLalu) L.push('Denda periode lalu' + (r.dendaLaluKet ? ' (' + r.dendaLaluKet + ')' : '') + ': Rp ' + rupiah2(r.dendaLalu));
+    if (r.ibr) L.push('Sisa iuran belum rinci (IBR): − Rp ' + rupiah2(r.ibr));
+    L.push('💰 *Total tagihan: Rp ' + rupiah2(r.totalTagihan) + '*' + (r.lebih ? ' (saldo IBR lebih Rp ' + rupiah2(r.lebih) + ')' : ''));
+    if (x.kode) L.push('🔑 Kode iuran: *' + x.kode + '*');
+    return L.join('\n');
+  }
+  function blokRincian(daftar, tanda) {
+    var L = [], total = 0;
+    (daftar || []).forEach(function (x, i) { if (i) L.push(''); L.push(teksRincianSubjek(x, tanda)); total += +x.r.totalTagihan || 0; });
+    if ((daftar || []).length > 1) { L.push(''); L.push('💰 *Total semua: Rp ' + rupiah2(total) + '*'); }
+    return L.join('\n');
+  }
+  function catatanRincian(adaNonBadanUsaha) {
+    return 'ℹ️ Dihitung dari iuran bulan terakhir; perubahan upah atau mutasi TK dihitung kemudian. Denda 2% per bulan keterlambatan (maks. 12 bulan)' +
+      (adaNonBadanUsaha ? ', tidak berlaku untuk pemberi kerja non-badan usaha' : '') + '.';
+  }
+  /** Daftar subjek bertanda: [{ nama, ket?, kode? }] → "📌 Nama (ket)\n   🔑 Kode iuran: *…*" */
+  function daftarSubjek(items, tanda) {
+    return (items || []).map(function (i) {
+      return (tanda || '📌') + ' ' + i.nama + (i.ket ? ' (' + i.ket + ')' : '') + (i.kode ? '\n   🔑 Kode iuran: *' + i.kode + '*' : '');
+    }).join('\n');
+  }
+
+  /* ---------------- pustaka ---------------- */
+  function teks(v) {
+    if (v === null || v === undefined) return '';
+    if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v.getTime()) ? '' : isoLokal(v);
+    return String(v);
+  }
+  function rapiBaris(o) {
+    var jenis = /^kal/i.test(teks(o.jenis)) ? 'Kalimat' : 'Templat';
+    var tingkat = teks(o.tingkat).trim() || 'Umum';
+    return {
+      id: teks(o.id).trim(), jenis: jenis, tingkat: tingkat, kunci: teks(o.kunci).trim(), nama: teks(o.nama).trim(),
+      keperluan: teks(o.keperluan).trim() || 'Lainnya', sasaran: teks(o.sasaran).trim(), isi: teks(o.isi).replace(/\r\n/g, '\n').replace(/\s+$/, ''),
+      aktif: teks(o.aktif).trim() === 'Tidak' ? 'Tidak' : 'Ya', dipakai: +o.dipakai || 0, terakhir_dipakai: teks(o.terakhir_dipakai).slice(0, 10),
+      diperbarui: teks(o.diperbarui), catatan: teks(o.catatan).trim()
+    };
+  }
+  /** Baris mentah (tab REDAKSI, JSON) → { baris, kalimat, templat }. Kosong → bawaan. */
+  function pustaka(baris) {
+    if (baris && baris.baris && baris.kalimat) return baris;
+    var b = (baris && baris.length ? baris : BAWAAN).map(rapiBaris).filter(function (o) { return o.id && (o.isi || o.jenis === 'Kalimat'); });
+    return { baris: b, kalimat: b.filter(function (o) { return o.jenis === 'Kalimat'; }), templat: b.filter(function (o) { return o.jenis === 'Templat'; }) };
+  }
+  function cariKalimat(p, app, kunci) {
+    var ks = (p && p.kalimat) || [], a = null, u = null;
+    for (var i = 0; i < ks.length; i++) {
+      var k = ks[i];
+      if (k.kunci !== kunci || k.aktif === 'Tidak') continue;
+      if (k.tingkat === app) a = k;      // yang terakhir menang (versi khusus terbaru)
+      if (k.tingkat === 'Umum' && !u) u = k;
+    }
+    return a || u;
+  }
+  /** Isi kalimat baku untuk aplikasi; tidak ada di pustaka → bawaan. */
+  function kalimat(p, app, kunci) {
+    var k = cariKalimat(p, app, kunci) || cariKalimat(pustaka(BAWAAN), app, kunci);
+    return k ? k.isi : '';
+  }
+  function kunciKalimat(p) {
+    var m = {};
+    KALIMAT.forEach(function (k) { m[k[0]] = true; });
+    ((p && p.kalimat) || []).forEach(function (k) { if (k.kunci) m[k.kunci] = true; });
+    return m;
+  }
+  function untukApp(o, app) { return o.tingkat === 'Umum' || o.tingkat === app; }
+  /** Templat aktif untuk satu aplikasi (Umum + khusus aplikasi), urut seperti di pustaka. */
+  function daftarTemplat(p, app, semua) {
+    return ((p && p.templat) || []).filter(function (t) { return untukApp(t, app) && (semua || t.aktif !== 'Tidak'); });
+  }
+  /** Templat ber-kunci (dipakai alur otomatis): khusus aplikasi menang atas Umum; tidak ada → bawaan. */
+  function templatKunci(p, app, kunci) {
+    var cari = function (q) {
+      var ts = (q && q.templat) || [], a = null, u = null;
+      ts.forEach(function (t) {
+        if (t.kunci !== kunci || t.aktif === 'Tidak') return;
+        if (t.tingkat === app) a = t;      // yang terakhir menang: templat lama yang dipertahankan / versi khusus terbaru
+        if (t.tingkat === 'Umum' && !u) u = t;
+      });
+      return a || u;
+    };
+    return cari(p) || cari(pustaka(BAWAAN));
+  }
+  function templatId(p, id) {
+    var ts = (p && p.templat) || [];
+    for (var i = 0; i < ts.length; i++) if (ts[i].id === id) return ts[i];
+    return null;
+  }
+
+  /* ---------------- penyusun ---------------- */
+  function adaPenanda(isi, nama) { return isi.indexOf('{' + nama + '}') >= 0; }
+  /** Pesan iuran = memuat {rincian}, atau keperluan tagihan/pengingat yang memuat daftar/kode iuran. */
+  function pesanIuran(isi, keperluan, nama) {
+    if (/\{rincian\}/.test(isi)) return true;
+    var iuran = /^(Tagihan|Pengingat)$/.test(keperluan || '') || /tagih|pengingat|iuran|bayar/i.test((keperluan || '') + ' ' + (nama || ''));
+    return iuran && /\{(daftar|daftar_npp|kode_iuran)\}/.test(isi);
+  }
+  /** Pengaman: pesan iuran selalu memuat cara bayar + kalimat SIPP (ditambahkan setelah rincian/daftar bila belum ada). */
+  function pengaman(isi, keperluan, nama) {
+    if (!pesanIuran(isi, keperluan, nama)) return isi;
+    var cb = adaPenanda(isi, 'cara_bayar'), sp = adaPenanda(isi, 'kalimat_sipp');
+    if (cb && sp) return isi;
+    if (cb) return isi.replace('{cara_bayar}', '{cara_bayar}\n{kalimat_sipp}');
+    if (sp) return isi.replace('{kalimat_sipp}', '{cara_bayar}\n{kalimat_sipp}');
+    var m = isi.match(/\{(rincian|daftar|daftar_npp|kode_iuran)\}/), i = isi.indexOf(m[0]) + m[0].length;
+    return isi.slice(0, i) + '\n\n{cara_bayar}\n{kalimat_sipp}' + isi.slice(i);
+  }
+  /** Bentuk lama yang perlu diterjemahkan sebelum disusun. */
+  function selaraskan(isi) {
+    return String(isi || '').replace(/\r\n/g, '\n')
+      .replace(/Bapak\/Ibu \{nama_pic\}/g, '{sapaan}')       // templat Monitor ≤ 1.4
+      .replace(/ℹ️ ?\{catatan\}/g, '{catatan_rincian}');      // templat LENSA ≤ 1.21 ({catatan} tanpa ikon)
+  }
+  /**
+   * Menyusun pesan. t = templat (baris pustaka) atau teks. o = {
+   *   pustaka, app ('LENSA'|'Monitor'), nilai: { penanda data…, ada_kode: false bila tidak ada kode iuran },
+   *   isian: { penanda buatan sendiri }, salam: (kosong = {salam} dibiarkan, diisi saat tombol WA diketuk),
+   *   praolah: function(isi) (penyesuaian khusus aplikasi), keperluan }
+   * Penanda yang tidak dikenal dan tidak diisi dibiarkan apa adanya.
+   */
+  function susun(t, o) {
+    o = o || {};
+    var isi = typeof t === 'string' ? t : String((t && t.isi) || '');
+    var kep = typeof t === 'string' ? (o.keperluan || '') : ((t && t.keperluan) || o.keperluan || '');
+    var nm = typeof t === 'string' ? '' : ((t && t.nama) || '');
+    var p = o.pustaka ? pustaka(o.pustaka) : pustaka(BAWAAN), app = o.app || 'Umum', nilai = o.nilai || {}, isian = o.isian || {};
+    isi = selaraskan(isi);
+    if (o.praolah) isi = o.praolah(isi);
+    isi = pengaman(isi, kep, nm);
+    // " ({yayasan})" dan sejenisnya: kurung ikut hilang bila isinya kosong
+    isi = isi.replace(/ \(\{(\w+)\}\)/g, function (m, k) { var v = nilai[ALIAS[k] || k]; return v === '' ? '' : m; });
+    var kk = kunciKalimat(p);
+    for (var lapis = 0; lapis < 4; lapis++) {
+      var ganti = false;
+      isi = isi.replace(/\{(\w+)\}/g, function (m, k) {
+        if (!kk[k]) return m;
+        ganti = true;
+        if (k === 'cara_bayar' && nilai.ada_kode === false) return KOSONG;
+        var v = kalimat(p, app, k);
+        return v ? selaraskan(v) : KOSONG;
+      });
+      if (!ganti) break;
+    }
+    isi = isi.replace(/\{(\w+)\}/g, function (m, k) {
+      var a = ALIAS[k] || k;
+      if (a === 'salam') return o.salam ? o.salam : m;
+      var v = nilai[a] !== undefined && nilai[a] !== null ? nilai[a] : nilai[k];
+      if (a === 'sapaan' && (v === undefined || v === null || !String(v).trim())) v = sapaan('', nilai.nama_pic);
+      if (v === undefined || v === null) {
+        var s = isian[k];
+        return s !== undefined && s !== null && String(s).trim() ? String(s).trim() : m;
+      }
+      v = String(v);
+      return v === '' ? KOSONG : v;
+    });
+    // baris yang hanya berisi penanda kosong dibuang; sisa tanda kosong dihapus beserta spasi di depannya
+    isi = isi.split('\n').filter(function (b) { return !(b.indexOf(KOSONG) >= 0 && !b.split(KOSONG).join('').trim()); }).join('\n');
+    isi = isi.replace(new RegExp('(^|\\n)' + KOSONG + '[ \\t]*', 'g'), '$1').replace(new RegExp('[ \\t]*' + KOSONG, 'g'), '');
+    return isi.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/^\s+|\s+$/g, '');
+  }
+  /** Penanda buatan sendiri di templat (ditanyakan sekali saat mengirim). */
+  function isian(isi, app) {
+    var kenal = kunciKalimat(null), m = {}, out = [];
+    DATA.forEach(function (d) { kenal[d[0]] = true; });
+    Object.keys(ALIAS).forEach(function (k) { kenal[k] = true; });
+    Object.keys(KHUSUS).forEach(function (a) { if (!app || a === app) KHUSUS[a].forEach(function (d) { kenal[d[0]] = true; }); });
+    String(isi || '').replace(/\{(\w+)\}/g, function (x, k) { if (!kenal[k] && !m[k]) { m[k] = 1; out.push(k); } return x; });
+    return out;
+  }
+  /** Peringatan untuk penyunting templat. */
+  function periksa(t, app) {
+    var isi = String((t && t.isi) || ''), kep = (t && t.keperluan) || '', out = [];
+    if (/wa\.me/i.test(isi)) out.push('Jangan memakai tautan wa.me; LENSA Suite selalu memakai api.whatsapp.com.');
+    if (/^(Tagihan|Pengingat)$/.test(kep) && !/\{(rincian|daftar|daftar_npp|kode_iuran)\}/.test(isi) && !/IBR|belum rinci/i.test(isi))
+      out.push('Pesan ' + kep.toLowerCase() + ' sebaiknya memuat kode iuran: sisipkan {rincian} atau {daftar}.');
+    if (pesanIuran(selaraskan(isi), kep, t && t.nama) && !(adaPenanda(isi, 'cara_bayar') && adaPenanda(isi, 'kalimat_sipp')))
+      out.push('Cara bayar dan kalimat SIPP ditambahkan otomatis setelah rincian/daftar.');
+    var bebas = isian(isi, app);
+    if (bebas.length) out.push('Isian yang ditanyakan saat mengirim: ' + bebas.map(function (k) { return '{' + k + '}'; }).join(', ') + '. Periksa ejaannya bila bukan isian.');
+    return out;
+  }
+
+  /* ---------------- data rekaan untuk pratinjau (contoh di pedoman) ---------------- */
+  function contoh(app, opsi) {
+    opsi = opsi || {};
+    var hari = opsi.hariIni || isoLokal(), blth = hari.slice(0, 7), mon = app === 'Monitor';
+    var bulanKe = function (n) { var b = bulanGeser(blth, n); return b.slice(5, 7) + '-' + b.slice(0, 4); };
+    var periode = blth.slice(5, 7) + '/' + blth.slice(0, 4);
+    var A = { nama: mon ? 'SPPG Contoh Satu' : 'CV Contoh Jaya', npp: '12345678', div: '000', kode: '412345678000',
+      r: { periode: periode, rows: [{ periode: bulanKe(-2), umur: 1, tagihan: 450000, denda: 9000 }, { periode: bulanKe(-1), umur: 0, tagihan: 450000, denda: 0 }, { periode: bulanKe(0), umur: -1, tagihan: 450000, denda: 0 }],
+        total: { piutang: 1350000, dendaPiutang: 9000 }, dendaOn: true, ibr: 0, totalTagihan: 1359000, lebih: 0 } };
+    var B = { nama: mon ? 'SPPG Contoh Dua' : 'UD Rekaan Makmur', npp: '87654321', div: '000', kode: '487654321000',
+      r: { periode: periode, rows: [{ periode: bulanKe(0), umur: -1, tagihan: 300000, denda: 0 }], total: { piutang: 300000, dendaPiutang: 0 }, dendaOn: true, ibr: 0, totalTagihan: 300000, lebih: 0 } };
+    var hb = mon ? 15 : 26, batas = blth + '-' + hb;
+    return {
+      sapaan: 'Pak Ahmad', nama_pic: 'Ahmad Fauzi', nama_subjek: gabungNama([A.nama, B.nama]),
+      daftar: daftarSubjek([{ nama: A.nama, kode: A.kode }, { nama: B.nama, kode: B.kode }]),
+      rincian: blokRincian([A, B]), catatan_rincian: catatanRincian(false), total: 'Rp ' + rupiah2(1659000),
+      kode_iuran: A.nama + ': ' + A.kode + '\n' + B.nama + ': ' + B.kode, npp: A.npp + ', ' + B.npp, ada_kode: true,
+      bulan: bulanTahun(blth), bulan_lalu: bulanTahun(bulanGeser(blth, -1)), batas: tanggalPanjang(batas), batas_hari: String(hb),
+      tanggal: tanggalPanjang(hari), tanggal_data: tanggalPanjang(opsi.tanggalData || hari), tk: '12', program: 'JKK-JKM-JHT',
+      petugas: opsi.petugas || 'Hafidz Indra Bahtiar', kantor: opsi.kantor || 'KC Pamekasan', yayasan: 'Yayasan Rekaan Sejahtera',
+      rekap_pendaftaran: '', rekap_iuran: '💳 *Rekap Pembayaran Iuran* :\n\n💥 18 NPP / 12 SPPG: Bayar Tepat Bulan – APRESIASI SETINGGI-TINGGINYA! 👍\n\n',
+      baru_bayar: '', daftar_nama: '', daftar_setor: '⏳ *Menunggu iuran pertama* :\n1. SPPG Contoh Satu – Yayasan Rekaan Sejahtera (Budi Santoso)\n\n',
+      daftar_belum: '📌 *Belum terdaftar* :\n1. SPPG Contoh Dua – Yayasan Rekaan Mandiri (Siti Aminah)\n\n'
+    };
+  }
+
+  function pasangBawaan(baris) { BAWAAN = (baris || []).slice(); }
+  function bawaan() { return BAWAAN.slice(); }
+
+  return {
+    VERSI: VERSI, TINGKAT: TINGKAT, KEPERLUAN: KEPERLUAN, ALIAS: ALIAS, KALIMAT: KALIMAT, DATA: DATA, KHUSUS: KHUSUS, BULAN: BULAN,
+    pasangBawaan: pasangBawaan, bawaan: bawaan, pustaka: pustaka, rapiBaris: rapiBaris, kalimat: kalimat, daftarTemplat: daftarTemplat,
+    templatKunci: templatKunci, templatId: templatId, susun: susun, isian: isian, periksa: periksa, pesanIuran: pesanIuran,
+    blokRincian: blokRincian, teksRincianSubjek: teksRincianSubjek, catatanRincian: catatanRincian, daftarSubjek: daftarSubjek,
+    sapaan: sapaan, judulNama: judulNama, gabungNama: gabungNama, rupiah2: rupiah2, tanggalPanjang: tanggalPanjang, bulanTahun: bulanTahun,
+    bulanGeser: bulanGeser, isoLokal: isoLokal, salamJam: salamJam, salamSekarang: salamSekarang, isiSalam: isiSalam,
+    noWa: noWa, urlWa: urlWa, urlWaTanpaNomor: urlWaTanpaNomor, contoh: contoh
+  };
+})();
+KitRedaksi.pasangBawaan([{"id":"K-pembuka","jenis":"Kalimat","tingkat":"Umum","kunci":"pembuka","nama":"Salam pembuka","isi":"Assalamu'alaikum Warahmatullahi Wabarakatuh.\n{salam} {sapaan}, semoga selalu sehat dan lancar segala urusannya. 🙏"},{"id":"K-sapa_singkat","jenis":"Kalimat","tingkat":"Umum","kunci":"sapa_singkat","nama":"Salam sapa singkat","isi":"Assalamu'alaikum. {salam}, {sapaan}. Semoga selalu sehat dan lancar segala urusannya."},{"id":"K-perkenalan","jenis":"Kalimat","tingkat":"Umum","kunci":"perkenalan","nama":"Perkenalan petugas","isi":"Perkenalkan, saya {petugas} dari BPJS Ketenagakerjaan {kantor} 👋"},{"id":"K-batas_bayar","jenis":"Kalimat","tingkat":"Umum","kunci":"batas_bayar","nama":"Batas bayar","isi":"Agar tercatat tepat bulan dan perlindungan pekerja tetap berjalan, pembayaran dapat dilakukan paling lambat tanggal {batas}. 🗓️✅"},{"id":"K-cara_bayar","jenis":"Kalimat","tingkat":"Umum","kunci":"cara_bayar","nama":"Cara bayar","isi":"📖 Cara bayar iuran dengan kode iuran di atas: https://bit.ly/bayar-iuran-bpjstk"},{"id":"K-kalimat_sipp","jenis":"Kalimat","tingkat":"Umum","kunci":"kalimat_sipp","nama":"Kalimat SIPP","isi":"💻 Bagi Bapak/Ibu yang sudah memiliki akun SIPP, tagihan iuran juga dapat dibentuk secara mandiri melalui menu *Mutasi Data*. Panduan SIPP: https://bit.ly/kode-iuran-sipp"},{"id":"K-abaikan","jenis":"Kalimat","tingkat":"Umum","kunci":"abaikan","nama":"Abaikan bila sudah bayar","isi":"Jika Bapak/Ibu sudah melakukan pembayaran, mohon abaikan pesan ini."},{"id":"K-kendala","jenis":"Kalimat","tingkat":"Umum","kunci":"kendala","nama":"Tawaran bantuan kendala","isi":"Apabila ada kendala terkait kode iuran (billing), silakan menghubungi saya, insyaAllah kami bantu. 🤝"},{"id":"K-terima_kasih","jenis":"Kalimat","tingkat":"Umum","kunci":"terima_kasih","nama":"Terima kasih","isi":"Terima kasih banyak. 🙏😊"},{"id":"K-penutup","jenis":"Kalimat","tingkat":"Umum","kunci":"penutup","nama":"Penutup + tanda tangan","isi":"Hormat saya,\n{petugas}\nBPJS Ketenagakerjaan {kantor}"},{"id":"K-pembuka_grup","jenis":"Kalimat","tingkat":"Umum","kunci":"pembuka_grup","nama":"Salam pembuka grup","isi":"Assalamu'alaikum Warahmatullahi Wabarakatuh.\n\n{salam} Bapak/Ibu sekalian."},{"id":"K-penutup_grup","jenis":"Kalimat","tingkat":"Umum","kunci":"penutup_grup","nama":"Penutup grup","isi":"Terima kasih atas sinergi dan perhatian Bapak/Ibu semua. 🙏"},{"id":"K-Monitor-batas_bayar","jenis":"Kalimat","tingkat":"Monitor","kunci":"batas_bayar","nama":"Batas bayar (SPPG)","isi":"Mohon pembayaran dapat dilakukan paling lambat tanggal {batas} agar perlindungan pengurus dan relawan tetap aktif. 🗓️✅"},{"id":"K-Monitor-penutup_grup","jenis":"Kalimat","tingkat":"Monitor","kunci":"penutup_grup","nama":"Penutup grup (SPPG)","isi":"Matorsakalangkong atas sinergi dan perhatian Bapak/Ibu semua. 🙏"},{"id":"U-sapa_singkat","jenis":"Templat","tingkat":"Umum","kunci":"sapa_singkat","nama":"Sapa singkat","keperluan":"Lainnya","sasaran":"Pembuka percakapan; lanjutkan mengetik sendiri","isi":"{sapa_singkat}"},{"id":"U-perkenalan","jenis":"Templat","tingkat":"Umum","kunci":"perkenalan","nama":"Perkenalan (pesan pertama)","keperluan":"Lainnya","sasaran":"Kontak baru yang belum pernah dihubungi","isi":"{pembuka}\n\n{perkenalan}, izin menghubungi terkait kepesertaan {nama_subjek}."},{"id":"U-rincian","jenis":"Templat","tingkat":"Umum","kunci":"rincian","nama":"Rincian tagihan","keperluan":"Tagihan","sasaran":"Kontak yang masih punya tagihan (yang lunas dilewati)","isi":"{pembuka}\n\nBerikut kami sampaikan rincian tagihan iuran BPJS Ketenagakerjaan per {tanggal}: 📋\n\n{rincian}\n\n{cara_bayar}\n{kalimat_sipp}\n\n{catatan_rincian}\n\n{abaikan} {kendala} {terima_kasih}\n\n{penutup}"},{"id":"U-pengingat","jenis":"Templat","tingkat":"Umum","kunci":"pengingat","nama":"Pengingat bulan ini","keperluan":"Pengingat","sasaran":"Belum bayar bulan ini (awal bulan / H-3 hari bayar)","isi":"{pembuka}\n\nMelalui pesan ini, kami izin menyampaikan pengingat iuran BPJS Ketenagakerjaan bulan {bulan} untuk:\n\n{daftar}\n\n{batas_bayar}\n\n{cara_bayar}\n{kalimat_sipp}\n\n{abaikan} {kendala} {terima_kasih}\n\n{penutup}"},{"id":"U-terima_kasih","jenis":"Templat","tingkat":"Umum","kunci":"terima_kasih","nama":"Terima kasih tepat bulan","keperluan":"Ucapan","sasaran":"Sudah bayar tepat bulan","isi":"{pembuka}\n\nTerima kasih, iuran BPJS Ketenagakerjaan *{nama_subjek}* bulan {bulan} sudah kami terima tepat bulan. 🌟 Apresiasi setinggi-tingginya atas kedisiplinan Bapak/Ibu dan tim. 👍 Semoga seluruh pekerja selalu sehat dan terlindungi. 🙏\n\n{penutup}"},{"id":"U-ibr","jenis":"Templat","tingkat":"Umum","kunci":"ibr","nama":"Lengkapi rincian (IBR)","keperluan":"Tagihan","sasaran":"Ada iuran belum rinci (IBR)","isi":"{pembuka}\n\nTerima kasih, iuran BPJS Ketenagakerjaan *{nama_subjek}* sudah kami terima. 🙏 Namun sebagian masih tercatat sebagai *iuran belum rinci (IBR)*, sehingga belum terhitung sebagai pembayaran bulan berjalan. 📋\n\nMohon bantuan Bapak/Ibu untuk melengkapi rincian tenaga kerja (daftar & upah) agar iuran terposting tepat bulan. Bila ada kendala, kami siap membantu. 🤝\n\n{terima_kasih}\n\n{penutup}"},{"id":"U-undangan","jenis":"Templat","tingkat":"Umum","kunci":"undangan","nama":"Undangan kegiatan","keperluan":"Undangan","sasaran":"Isi nama acara, hari/tanggal, jam, dan tempat saat mengirim","isi":"{pembuka}\n\nDengan hormat, kami mengundang Bapak/Ibu selaku perwakilan {nama_subjek} untuk hadir dalam kegiatan:\n\n🎯 *{acara}*\n🗓️ {hari_tanggal}\n⏰ {jam}\n📍 {tempat}\n\nKehadiran Bapak/Ibu sangat berarti bagi kami. Mohon konfirmasi kehadiran dengan membalas pesan ini ya. 😊\n\n{penutup}"},{"id":"U-pembaruan_data","jenis":"Templat","tingkat":"Umum","kunci":"pembaruan_data","nama":"Pembaruan data kepesertaan","keperluan":"Pemutakhiran data","sasaran":"Data kontak/TK belum lengkap","isi":"{pembuka}\n\nIzin, kami sedang memperbarui data kepesertaan {nama_subjek}. 📝 Mohon bantuan Bapak/Ibu mengonfirmasi:\n\n1️⃣ Nama dan nomor WA PIC/HRD yang bisa kami hubungi\n2️⃣ Jumlah tenaga kerja saat ini\n3️⃣ Email perusahaan\n\nCukup dibalas di WA ini saja. Terima kasih banyak atas bantuannya. 🙏😊\n\n{penutup}"},{"id":"U-ucapan","jenis":"Templat","tingkat":"Umum","kunci":"ucapan","nama":"Ucapan hari besar","keperluan":"Ucapan","sasaran":"Isi ucapannya saat mengirim","isi":"Assalamu'alaikum Warahmatullahi Wabarakatuh.\n{salam} {sapaan}. 🙏\n\n{ucapan}\n\nTerima kasih atas kerja sama {nama_subjek} bersama BPJS Ketenagakerjaan selama ini. Semoga usaha dan seluruh pekerja selalu sehat, aman, dan sejahtera. 🌟\n\n{penutup}"},{"id":"L-sapu","jenis":"Templat","tingkat":"LENSA","kunci":"sapu","nama":"Sapu akhir bulan","keperluan":"Pengingat","sasaran":"Belum posting, tanggal 21 dst. (Hari ini)","isi":"{pembuka}\n\nIzin mengingatkan kembali ya, sampai hari ini iuran BPJS Ketenagakerjaan bulan {bulan} untuk:\n\n{daftar}\n\nbelum kami terima. ⏳ {batas_bayar}\n\n{cara_bayar}\n{kalimat_sipp}\n\n{abaikan} {kendala} {terima_kasih}\n\n{penutup}"},{"id":"L-telat","jenis":"Templat","tingkat":"LENSA","kunci":"telat","nama":"Telat 1 bulan atau lebih","keperluan":"Tagihan","sasaran":"Telat 1 bulan atau lebih (Hari ini)","isi":"{pembuka}\n\nMelalui pesan ini, kami izin menginformasikan bahwa iuran BPJS Ketenagakerjaan berikut masih belum terbayar:\n\n{daftar}\n\nAgar perlindungan pekerja tetap aktif dan tagihan tidak makin menumpuk, mohon pembayaran dapat segera dilakukan. 💪 Bila ada kendala, silakan kabari saya, kami siap membantu mencarikan jalan keluarnya. 🤝\n\n{cara_bayar}\n{kalimat_sipp}\n\n{abaikan} {terima_kasih}\n\n{penutup}"},{"id":"L-ajakan_program","jenis":"Templat","tingkat":"LENSA","kunci":"ajakan_program","nama":"Ajakan melengkapi program (JHT/JP)","keperluan":"Sosialisasi","sasaran":"Badan usaha 2P/3P","isi":"{pembuka}\n\nTerima kasih atas kepercayaan {nama_subjek} kepada BPJS Ketenagakerjaan. 💙\n\nSaat ini perlindungan pekerja di {nama_subjek} mengikuti program {program}. Kami ingin mengajak Bapak/Ibu melengkapi perlindungan dengan Jaminan Hari Tua (JHT) dan Jaminan Pensiun (JP), agar pekerja punya tabungan hari tua dan penghasilan bulanan saat pensiun. 🌱\n\nBila berkenan, kami siap menjelaskan simulasi iurannya, lewat WA atau kami datang ke tempat. 🤝\n\n{penutup}"},{"id":"M-pendaftaran","jenis":"Templat","tingkat":"Monitor","kunci":"pendaftaran","nama":"Tindak lanjut pendaftaran","keperluan":"Lainnya","sasaran":"SPPG belum terdaftar / menunggu iuran pertama","isi":"{pembuka}\n\nIzin menindaklanjuti kepesertaan BPJS Ketenagakerjaan untuk *{nama_subjek}* ({yayasan}). 📝\n\nMohon kabar perkembangannya ya, Bapak/Ibu. Bila ada kendala data atau pembayaran iuran pertama, kami siap membantu. 🤝\n\n{terima_kasih}\n\n{penutup}"},{"id":"M-grup_harian","jenis":"Templat","tingkat":"Monitor","kunci":"grup_harian","nama":"Laporan grup harian","keperluan":"Laporan grup","sasaran":"Grup WA Kepala SPPG, koordinator yayasan, internal BPJSTK","isi":"{pembuka_grup}\n\nIzin kami sampaikan Update Progres Kepesertaan SPPG per {tanggal_data}\n\n{rekap_pendaftaran}{rekap_iuran}{baru_bayar}{daftar_nama}Mohon bantuan Bapak/Ibu Kepala SPPG dan Perwakilan Yayasan untuk segera melakukan pendaftaran serta pembayaran iuran *paling lambat tanggal {batas_hari}* setiap bulannya demi menghindari denda dan memastikan kelancaran pelayanan jika terjadi risiko.\n\n{penutup_grup}"},{"id":"M-grup_pendaftaran","jenis":"Templat","tingkat":"Monitor","kunci":"grup_pendaftaran","nama":"Laporan pendaftaran (grup)","keperluan":"Laporan grup","sasaran":"Grup WA saat rekap pendaftaran diperbarui","isi":"{pembuka_grup}\n\nIzin kami sampaikan Update Pendaftaran Kepesertaan SPPG per {tanggal_data}\n\n{rekap_pendaftaran}{daftar_setor}{daftar_belum}Mohon bantuan Bapak/Ibu Kepala SPPG dan Perwakilan Yayasan untuk segera menyelesaikan pendaftaran serta pembayaran iuran pertama. Bila ada kendala, kami siap membantu. 🤝\n\n{penutup_grup}"}]);
+window.KitRedaksi = KitRedaksi;
+var RESEP_APP = {"nama":"LENSA PK","kode":"lensa-pk","tingkat":"LENSA","label":"MASTER","subjek":"PK","alamat":"https://hibahtiar.github.io/lensa-pk/","warna":{"utama":"#0E5A5F","utama2":"#157A80","gelap":"#0A4347","aksen":"#C9972B"},"peran":["Pemilik","Pelaksana","Mitra","Pengamat"],"modul":[{"nama":"pesan-wa","aktif":true,"pengaturan":{"ubahRedaksi":["Pemilik"],"batasHari":26,"jedaKontakHari":7,"maksKontakHari":40,"tandaDaftar":"📌","catatan":"Angka di atas hanya bawaan; yang berlaku adalah tab PENGATURAN (batas_aman_posting, jeda_kontak_hari, batas_daftar_harian, penanda_daftar)."}}]};
+/* === kit/alat.js === */
+/* ======================================================================
+ *  KIT LENSA Suite · alat.js — alat kecil di browser yang dipakai semua aplikasi.
+ * ====================================================================== */
+var KitAlat = (function () {
+  'use strict';
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  /** Salin teks ke papan klip; cadangan lewat textarea untuk browser lama / tanpa izin. */
+  function salinTeks(t) {
+    t = String(t || '');
+    var cadangan = function () {
+      var a = document.createElement('textarea');
+      a.value = t; a.setAttribute('readonly', '');
+      a.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px';
+      document.body.appendChild(a); a.select();
+      var ok = false;
+      try { a.setSelectionRange(0, t.length); ok = document.execCommand('copy'); } catch (x) { ok = false; }
+      document.body.removeChild(a);
+      return ok;
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).then(function () { return true; }, function () { return cadangan(); });
+    return Promise.resolve(cadangan());
+  }
+  /** Buka WhatsApp. namaTab sama = satu tab dipakai ulang di komputer (hanya untuk api.whatsapp.com). */
+  function bukaWa(url, namaTab) {
+    if (!/^https:\/\/api\.whatsapp\.com\//.test(String(url || ''))) return false;
+    var w = null;
+    try { w = window.open(url, namaTab || '_blank'); } catch (x) { w = null; }
+    return !!w;
+  }
+  return { esc: esc, salinTeks: salinTeks, bukaWa: bukaWa };
+})();
+
+/* === kit/wadah.js === */
+/* ======================================================================
+ *  KIT LENSA Suite · wadah.js — wadah layar modul (Shadow DOM) berwarna aplikasi.
+ *  Gaya modul tidak bertabrakan dengan gaya aplikasi; warna diambil dari resep (app.json).
+ * ====================================================================== */
+var KitWadah = (function () {
+  'use strict';
+  /** warna: { utama, utama2, gelap, aksen } → { induk (pasang di halaman), akar (shadowRoot), isi (div tempat menggambar) } */
+  function buat(css, warna) {
+    var v = warna || {}, induk = document.createElement('div');
+    induk.className = 'kit-wadah';
+    var akar = induk.attachShadow({ mode: 'open' });
+    akar.innerHTML = '<style>:host{display:block;--utama:' + (v.utama || '#0E5A5F') + ';--utama2:' + (v.utama2 || v.utama || '#157A80') +
+      ';--gelap:' + (v.gelap || '#0A4347') + ';--aksen:' + (v.aksen || '#C9972B') + '}' + (css || '') + '</style><div class="akar"></div>';
+    return { induk: induk, akar: akar, isi: akar.querySelector('.akar') };
+  }
+  return { buat: buat };
+})();
+
+/* === kit/modul.js === */
+/* ======================================================================
+ *  KIT LENSA Suite · modul.js — pemuat modul + pembaca resep aplikasi (apps/<nama>/app.json).
+ *  Resep: { nama, tingkat, subjek, warna, modul: [{ nama, aktif, pengaturan }] }.
+ * ====================================================================== */
+var KitModul = (function () {
+  'use strict';
+  var TERDAFTAR = {};
+  function daftar(nama, modul) { TERDAFTAR[nama] = modul; }
+  function cari(resep, nama) {
+    var ms = (resep && resep.modul) || [];
+    for (var i = 0; i < ms.length; i++) if ((ms[i].nama || ms[i]) === nama) return ms[i];
+    return null;
+  }
+  function aktif(resep, nama) { var m = cari(resep, nama); return !!m && m.aktif !== false && !!TERDAFTAR[nama]; }
+  function pengaturan(resep, nama) { var m = cari(resep, nama); return (m && m.pengaturan) || {}; }
+  /** Memasang modul di elemen wadah bila modul itu dinyalakan di resep. Mengembalikan objek modul atau null. */
+  function pasang(resep, nama, el, opsi) {
+    if (!aktif(resep, nama)) return null;
+    var o = {}, k;
+    opsi = opsi || {};
+    for (k in opsi) if (Object.prototype.hasOwnProperty.call(opsi, k)) o[k] = opsi[k];
+    o.resep = resep; o.pengaturan = pengaturan(resep, nama);
+    TERDAFTAR[nama].pasang(el, o);
+    return TERDAFTAR[nama];
+  }
+  return { daftar: daftar, aktif: aktif, pengaturan: pengaturan, pasang: pasang };
+})();
+
+/* === modul/pesan-wa/pesan-wa.js === */
+/* ======================================================================
+ *  MODUL Pesan WA · layar Pustaka Redaksi (LENSA Suite, Tahap 1).
+ *  Daftar kalimat baku & templat per tingkat (Umum → aplikasi → templat), penyunting dengan
+ *  tombol penanda, pratinjau langsung (data rekaan), peringatan, dan pemakaian per templat.
+ *  Dipasang di wadah Shadow DOM: ModulPesanWa.pasang(el, opsi) — biasanya lewat KitModul.pasang(resep, 'pesan-wa', el, opsi).
+ *  opsi: {
+ *    app: 'LENSA'|'Monitor', resep, pengaturan,
+ *    pustaka: function () → baris pustaka (tab REDAKSI / salinan),
+ *    bolehUbah: function () → true bila perangkat ini boleh mengubah redaksi,
+ *    simpan: function (baris) → Promise (dipanggil untuk simpan/aktifkan/tandai ditinjau),
+ *    petugas, kantor, kabar: function (teks), buka: id templat yang langsung dibuka ('+' = templat baru),
+ *    judul: false bila aplikasi sudah menampilkan judul layar, semuaTingkat: true di Pusat Kendali (LENSA)
+ *  }
+ * ====================================================================== */
+var ModulPesanWa = (function () {
+  'use strict';
+  var R = KitRedaksi, esc = KitAlat.esc;
+  var KET_KUNCI = {
+    rincian: 'Rincian tagihan: kartu PK, grup, Hubungi PIC Monitor', pengingat: 'Hari ini awal bulan & H-3; Monitor: belum bayar bulan ini',
+    sapu: 'Hari ini tanggal 21 dst.', telat: 'Hari ini: PK telat 1 bulan atau lebih', perkenalan: 'Tombol WA di kartu PK',
+    sapa_singkat: 'Tombol Sapa di halaman kontak', terima_kasih: 'Hubungi PIC Monitor: tepat bulan', ibr: 'Hubungi PIC Monitor: ada IBR',
+    pendaftaran: 'Hubungi PIC Monitor: pendaftaran', grup_harian: 'Laporan grup harian Monitor', grup_pendaftaran: 'Laporan pendaftaran Monitor'
+  };
+  var W = null;
+
+  function opsi() { return W.opsi; }
+  function app() { return opsi().app || 'LENSA'; }
+  function boleh() { return !!(opsi().bolehUbah && opsi().bolehUbah()); }
+  function baris() { var b = opsi().pustaka ? opsi().pustaka() : null; return b && b.length ? b : R.bawaan(); }
+  function P() { return R.pustaka(baris()); }
+  function $(s) { return W.wd.akar.querySelector(s); }
+  function kabar(t) { if (opsi().kabar) opsi().kabar(t); }
+  function perluTinjau(o) { return /^perlu ditinjau/i.test(o.catatan || ''); }
+  function namaKalimat(k) { for (var i = 0; i < R.KALIMAT.length; i++) if (R.KALIMAT[i][0] === k) return R.KALIMAT[i][1]; return k; }
+  function salin(o) { var x = {}, k; for (k in o) if (Object.prototype.hasOwnProperty.call(o, k)) x[k] = o[k]; return x; }
+
+  function pasang(el, o) {
+    if (!W) {
+      var wd = KitWadah.buat(typeof CSS_PESAN_WA === 'string' ? CSS_PESAN_WA : '', (o.resep && o.resep.warna) || {});
+      W = { wd: wd, ui: { tab: 'templat', tingkat: '', cari: '', draf: null, lihatApp: '', tinjau: false } };
+      pasangPeristiwa();
+    }
+    W.opsi = o;
+    if (W.wd.induk.parentNode !== el) el.appendChild(W.wd.induk);
+    if (o.buka === '+') AKSI.baru();
+    else if (o.buka) { var t = P().baris.filter(function (x) { return x.id === o.buka; })[0]; if (t) bukaDraf(t); }
+    o.buka = '';
+    render();
+  }
+  /** true selama penyunting terbuka dengan perubahan yang belum disimpan (aplikasi menunda muat ulang). */
+  function sibuk() { return !!(W && W.ui.draf && W.ui.draf.ubah); }
+
+  /* ---------------- daftar ---------------- */
+  function cocok(o) {
+    var u = W.ui;
+    if (u.tingkat && o.tingkat !== u.tingkat) return false;
+    if (u.tinjau && !perluTinjau(o)) return false;
+    if (!u.cari) return true;
+    var q = u.cari.toLowerCase();
+    return (o.nama + ' ' + o.kunci + ' ' + o.isi + ' ' + o.sasaran).toLowerCase().indexOf(q) >= 0;
+  }
+  function cuplik(isi) {
+    return String(isi || '').split('\n').filter(function (b) { b = b.trim(); return b && !/^Assalamu|^\{salam\}|^\{pembuka/.test(b); }).slice(0, 2).join(' ');
+  }
+  /** Pusat Kendali (LENSA) melihat semua tingkat; aplikasi lain hanya Umum + miliknya sendiri. */
+  function relevan(o) { return opsi().semuaTingkat || o.tingkat === 'Umum' || o.tingkat === app(); }
+  function lencana(teks, kelas) { return '<span class="lencana ' + (kelas || '') + '">' + esc(teks) + '</span>'; }
+  function kartuTemplat(t) {
+    return '<button class="kartu-item" data-a="buka" data-v="' + esc(t.id) + '"><div class="baris1"><b>' + esc(t.nama) + '</b>' +
+      lencana(t.tingkat, 't-' + t.tingkat.toLowerCase()) + lencana(t.keperluan) + (t.aktif === 'Tidak' ? lencana('nonaktif', 'mati') : '') +
+      (perluTinjau(t) ? lencana('perlu ditinjau', 'tinjau') : '') + '</div>' +
+      (t.kunci && KET_KUNCI[t.kunci] ? '<div class="ket">Dipakai otomatis: ' + esc(KET_KUNCI[t.kunci]) + '</div>' : t.sasaran ? '<div class="ket">Cocok untuk: ' + esc(t.sasaran) + '</div>' : '') +
+      '<div class="cuplik">' + esc(cuplik(t.isi)) + '</div><div class="ket">Dipakai ' + (t.dipakai || 0) + ' kali' + (t.terakhir_dipakai ? ' · terakhir ' + esc(R.tanggalPanjang(t.terakhir_dipakai)) : '') + '</div></button>';
+  }
+  function kartuKalimat(k, p) {
+    var timpa = p.kalimat.filter(function (x) { return x.kunci === k.kunci && x.tingkat !== 'Umum' && x.aktif !== 'Tidak'; }).map(function (x) { return x.tingkat; });
+    var n = p.templat.filter(function (t) { return t.isi.indexOf('{' + k.kunci + '}') >= 0; }).length;
+    return '<button class="kartu-item" data-a="buka" data-v="' + esc(k.id) + '"><div class="baris1"><b>' + esc(namaKalimat(k.kunci)) + '</b><code>{' + esc(k.kunci) + '}</code>' +
+      lencana(k.tingkat, 't-' + k.tingkat.toLowerCase()) + (k.aktif === 'Tidak' ? lencana('nonaktif', 'mati') : '') + (perluTinjau(k) ? lencana('perlu ditinjau', 'tinjau') : '') + '</div>' +
+      '<div class="isi-kalimat">' + esc(k.isi) + '</div><div class="ket">Dipakai di ' + n + ' templat' + (k.tingkat === 'Umum' && timpa.length ? ' · ditimpa versi khusus ' + esc(timpa.join(', ')) : '') + '</div></button>';
+  }
+  function layarDaftar() {
+    var p = P(), u = W.ui, tab = u.tab, data = (tab === 'kalimat' ? p.kalimat : p.templat).filter(relevan);
+    var nTinjau = p.baris.filter(relevan).filter(perluTinjau).length;
+    var tampil = data.filter(cocok);
+    var h = '<div class="kepala"><div>' + (opsi().judul === false ? '' : '<h1>Pustaka Redaksi WA</h1>') + '<div class="sub">' + p.templat.filter(relevan).length + ' templat · ' + p.kalimat.filter(relevan).length +
+      ' kalimat baku. Berlaku bertingkat: Umum → khusus aplikasi → templat. Ubah kalimat baku sekali, semua templat yang memakainya ikut berubah.</div></div>' +
+      (boleh() && tab === 'templat' ? '<button class="btn utama" data-a="baru">+ Templat baru</button>' : '') + '</div>';
+    if (!boleh()) h += '<div class="info">' + esc((opsi().pengaturan && opsi().pengaturan.catatanUbah) || 'Hanya Pemilik yang bisa mengubah redaksi. Di sini Anda bisa melihat isi dan pratinjaunya.') + '</div>';
+    if (nTinjau) h += '<button class="info kuning" data-a="tinjau">' + nTinjau + ' templat lama perlu ditinjau' + (u.tinjau ? ' · tampilkan semua' : ' · tampilkan') + '</button>';
+    h += '<div class="alat"><div class="seg">' + [['templat', 'Templat'], ['kalimat', 'Kalimat baku']].map(function (x) {
+      return '<button data-a="tab" data-v="' + x[0] + '" aria-pressed="' + (tab === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="chips">' + [''].concat(R.TINGKAT.filter(function (t) { return relevan({ tingkat: t }); })).map(function (t) { return '<button data-a="tingkat" data-v="' + t + '" aria-pressed="' + (u.tingkat === t) + '">' + (t || 'Semua') + '</button>'; }).join('') + '</div>' +
+      '<input class="cari" type="search" data-f="cari" placeholder="Cari nama atau isi…" value="' + esc(u.cari) + '" aria-label="Cari di pustaka"></div>';
+    h += tampil.length ? '<div class="daftar">' + tampil.map(function (o) { return tab === 'kalimat' ? kartuKalimat(o, p) : kartuTemplat(o); }).join('') + '</div>'
+      : '<div class="kosong">Tidak ada yang cocok.</div>';
+    return h;
+  }
+
+  /* ---------------- penyunting ---------------- */
+  function bukaDraf(o) { var d = salin(o); d.ubah = false; W.ui.draf = d; W.ui.lihatApp = ''; }
+  function appPratinjau(d) { return d.tingkat === 'Umum' ? (W.ui.lihatApp || app()) : d.tingkat; }
+  function barisDenganDraf(d) {
+    var b = baris().map(function (x) { return R.rapiBaris(x); }), ada = false;
+    b = b.map(function (x) { if (d.id && x.id === d.id) { ada = true; return d; } return x; });
+    if (!ada) b.push(salin(d));
+    return b;
+  }
+  function teksPratinjau(d) {
+    var a = appPratinjau(d), p = R.pustaka(barisDenganDraf(d));
+    var t = d.jenis === 'Kalimat' ? { isi: '{' + d.kunci + '}', keperluan: 'Lainnya' } : d;
+    return R.susun(t, { pustaka: p, app: a, nilai: R.contoh(a, { petugas: opsi().petugas, kantor: opsi().kantor }), salam: R.salamSekarang() });
+  }
+  function htmlPeringatan(d) {
+    var w = d.jenis === 'Templat' ? R.periksa(d, appPratinjau(d)) : [];
+    return w.length ? '<ul class="peringatan">' + w.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '';
+  }
+  function tombolPenanda(boleh2) {
+    if (!boleh2) return '';
+    var a = W.ui.draf ? appPratinjau(W.ui.draf) : app();
+    var data = R.DATA.concat(R.KHUSUS[a] || []);
+    return '<div class="label">Sisipkan kalimat baku</div><div class="penanda">' + R.KALIMAT.map(function (k) {
+      return '<button data-a="sisip" data-v="' + k[0] + '" title="' + esc(k[1]) + '">{' + k[0] + '}</button>'; }).join('') + '</div>' +
+      '<div class="label">Sisipkan data penerima</div><div class="penanda">' + data.map(function (k) {
+      return '<button data-a="sisip" data-v="' + k[0] + '" title="' + esc(k[1]) + '">{' + k[0] + '}</button>'; }).join('') + '</div>' +
+      '<div class="ket">Penanda lain buatan sendiri, mis. {acara} atau {tempat}, ditanyakan sekali saat mengirim.</div>';
+  }
+  function layarSunting() {
+    var d = W.ui.draf, b = boleh(), kal = d.jenis === 'Kalimat', p = P();
+    var dis = b ? '' : ' disabled';
+    var h = '<div class="kepala"><div><button class="btn polos kembali" data-a="tutup">‹ Pustaka</button><h1>' + esc(kal ? namaKalimat(d.kunci) : (d.nama || 'Templat baru')) + '</h1>' +
+      '<div class="sub">' + (kal ? 'Kalimat baku <code>{' + esc(d.kunci) + '}</code> · ' : '') + 'Tingkat ' + esc(d.tingkat) +
+      (d.kunci && !kal && KET_KUNCI[d.kunci] ? ' · dipakai otomatis: ' + esc(KET_KUNCI[d.kunci]) : '') + '</div></div></div>';
+    if (perluTinjau(d)) h += '<div class="info kuning">' + esc(d.catatan) + '</div>';
+    h += '<div class="sunting"><div class="kolom">';
+    if (!kal) {
+      h += '<label class="label" for="fnama">Nama templat</label><input class="inp" id="fnama" data-f="nama" value="' + esc(d.nama) + '"' + dis + '>';
+      h += '<div class="dua"><div><label class="label" for="ftingkat">Berlaku untuk</label><select class="inp" id="ftingkat" data-f="tingkat"' + (b && !d.kunci ? '' : ' disabled') + '>' +
+        R.TINGKAT.map(function (t) { return '<option value="' + t + '"' + (d.tingkat === t ? ' selected' : '') + '>' + (t === 'Umum' ? 'Umum (semua aplikasi)' : 'Khusus ' + t) + '</option>'; }).join('') + '</select></div>' +
+        '<div><label class="label" for="fkep">Keperluan</label><select class="inp" id="fkep" data-f="keperluan"' + dis + '>' +
+        R.KEPERLUAN.map(function (k) { return '<option' + (d.keperluan === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select></div></div>';
+      h += '<label class="label" for="fsas">Cocok untuk (catatan)</label><input class="inp" id="fsas" data-f="sasaran" value="' + esc(d.sasaran) + '"' + dis + '>';
+    }
+    h += '<label class="label" for="fisi">' + (kal ? 'Isi kalimat' : 'Isi pesan') + '</label><textarea class="inp isi" id="fisi" data-f="isi"' + dis + '>' + esc(d.isi) + '</textarea>';
+    h += tombolPenanda(b);
+    if (kal) {
+      var dipakai = p.templat.filter(function (t) { return t.isi.indexOf('{' + d.kunci + '}') >= 0; });
+      h += '<div class="label">Dipakai di ' + dipakai.length + ' templat</div><div class="ket">' + esc(dipakai.map(function (t) { return t.nama + ' (' + t.tingkat + ')'; }).join(', ') || '–') + '</div>';
+    }
+    h += '</div><div class="kolom"><div class="kepala-kecil"><span class="label">Pratinjau (data rekaan)</span>' +
+      (d.tingkat === 'Umum' ? '<span class="seg kecil">' + ['LENSA', 'Monitor'].map(function (a) { return '<button data-a="lihatApp" data-v="' + a + '" aria-pressed="' + (appPratinjau(d) === a) + '">' + a + '</button>'; }).join('') + '</span>' : '') +
+      '</div><div class="pratinjau" id="pratinjau">' + esc(teksPratinjau(d)) + '</div><div id="peringatan">' + htmlPeringatan(d) + '</div>' +
+      '<button class="btn polos" data-a="salinPratinjau">Salin pratinjau</button></div></div>';
+    h += '<div class="bawah">' + tombolBawah(d, b, p) + '</div>';
+    return h;
+  }
+  function tombolBawah(d, b, p) {
+    if (!b) return '<button class="btn" data-a="tutup">Kembali</button>';
+    var t = [], kal = d.jenis === 'Kalimat';
+    if (d.id && !d.baru) {
+      if (d.tingkat === 'Umum' && (kal || d.kunci)) {
+        ['LENSA', 'Monitor'].forEach(function (a) {
+          var ada = (kal ? p.kalimat : p.templat).some(function (x) { return x.kunci === d.kunci && x.tingkat === a && x.aktif !== 'Tidak'; });
+          if (!ada) t.push('<button class="btn" data-a="khusus" data-v="' + a + '">Buat versi khusus ' + a + '</button>');
+        });
+      } else if (!(kal && d.tingkat === 'Umum')) {
+        t.push('<button class="btn' + (d.aktif === 'Tidak' ? '' : ' bahaya') + '" data-a="aktif">' + (d.aktif === 'Tidak' ? 'Aktifkan lagi' : d.tingkat !== 'Umum' && d.kunci ? 'Hapus versi khusus' : 'Nonaktifkan') + '</button>');
+      }
+      if (!kal) t.push('<button class="btn" data-a="salinBaru">Salin jadi templat baru</button>');
+      if (perluTinjau(d)) t.push('<button class="btn" data-a="ditinjau">Sudah ditinjau</button>');
+    }
+    t.push('<span class="isi-lebar"></span><button class="btn" data-a="tutup">Batal</button><button class="btn utama" data-a="simpan">Simpan</button>');
+    return t.join('');
+  }
+
+  /* ---------------- gambar & peristiwa ---------------- */
+  function render() {
+    if (!W) return;
+    W.wd.isi.innerHTML = '<div class="modul-wa">' + (W.ui.draf ? layarSunting() : layarDaftar()) + '</div>';
+  }
+  function segarkanPratinjau() {
+    var d = W.ui.draf, el = $('#pratinjau'), pw = $('#peringatan');
+    if (!d || !el) return;
+    el.textContent = teksPratinjau(d);
+    if (pw) pw.innerHTML = htmlPeringatan(d);
+  }
+  function ambilBaris(d) {
+    return { id: d.id || '', jenis: d.jenis, tingkat: d.tingkat, kunci: d.kunci || '', nama: d.nama || '', keperluan: d.keperluan || 'Lainnya',
+      sasaran: d.sasaran || '', isi: d.isi || '', aktif: d.aktif || 'Ya', catatan: d.catatan || '' };
+  }
+  function kirim(o, pesan) {
+    var pr = opsi().simpan ? opsi().simpan(o) : Promise.reject(new Error('Tidak bisa menyimpan di sini.'));
+    return Promise.resolve(pr).then(function (h) {
+      W.ui.draf = null; kabar(pesan); render(); return h;
+    }, function (er) { kabar('Gagal: ' + (er && er.message || er)); });
+  }
+  var AKSI = {
+    tab: function (v) { W.ui.tab = v; render(); },
+    tingkat: function (v) { W.ui.tingkat = v; render(); },
+    tinjau: function () { W.ui.tinjau = !W.ui.tinjau; render(); },
+    buka: function (v) { var o = P().baris.filter(function (x) { return x.id === v; })[0]; if (o) { bukaDraf(o); render(); } },
+    baru: function () {
+      W.ui.draf = { id: '', baru: true, jenis: 'Templat', tingkat: app(), kunci: '', nama: '', keperluan: 'Lainnya', sasaran: '', aktif: 'Ya', catatan: '',
+        isi: '{pembuka}\n\n\n\n{penutup}', ubah: false };
+      render();
+    },
+    tutup: function () {
+      if (W.ui.draf && W.ui.draf.ubah && !window.confirm('Tutup tanpa menyimpan perubahan?')) return;
+      W.ui.draf = null; render();
+    },
+    lihatApp: function (v) { W.ui.lihatApp = v; render(); },
+    sisip: function (v) {
+      var ta = $('#fisi'); if (!ta || ta.disabled) return;
+      var s = ta.selectionStart || 0, e2 = ta.selectionEnd || 0, t = '{' + v + '}';
+      ta.value = ta.value.slice(0, s) + t + ta.value.slice(e2);
+      ta.focus(); ta.setSelectionRange(s + t.length, s + t.length);
+      W.ui.draf.isi = ta.value; W.ui.draf.ubah = true; segarkanPratinjau();
+    },
+    salinPratinjau: function () { KitAlat.salinTeks(teksPratinjau(W.ui.draf)).then(function (ok) { kabar(ok ? 'Pratinjau disalin.' : 'Gagal menyalin.'); }); },
+    simpan: function () {
+      var d = W.ui.draf;
+      if (d.jenis === 'Templat' && !String(d.nama || '').trim()) { kabar('Nama templat belum diisi.'); return; }
+      if (!String(d.isi || '').trim()) { kabar('Isi belum diisi.'); return; }
+      if (String(d.isi).length > 4000) { kabar('Isi terlalu panjang (maks. 4.000 huruf).'); return; }
+      kirim(ambilBaris(d), 'Tersimpan: ' + (d.jenis === 'Kalimat' ? namaKalimat(d.kunci) : d.nama));
+    },
+    aktif: function () {
+      var d = W.ui.draf, o = ambilBaris(d);
+      o.aktif = d.aktif === 'Tidak' ? 'Ya' : 'Tidak';
+      if (o.aktif === 'Tidak' && !window.confirm((d.tingkat !== 'Umum' && d.kunci ? 'Hapus versi khusus ' + d.tingkat + '? Aplikasi kembali memakai versi Umum.' : 'Nonaktifkan "' + d.nama + '"? Barisnya tetap ada dan bisa diaktifkan lagi.'))) return;
+      kirim(o, o.aktif === 'Tidak' ? 'Dinonaktifkan.' : 'Diaktifkan lagi.');
+    },
+    khusus: function (v) {
+      var d = W.ui.draf, x = salin(d);
+      x.id = ''; x.baru = true; x.tingkat = v; x.catatan = ''; x.dipakai = 0; x.terakhir_dipakai = ''; x.ubah = true;
+      if (x.jenis === 'Templat') x.nama = d.nama + ' (' + v + ')';
+      W.ui.draf = x; W.ui.lihatApp = ''; render();
+    },
+    salinBaru: function () {
+      var d = W.ui.draf, x = salin(d);
+      x.id = ''; x.baru = true; x.kunci = ''; x.nama = d.nama + ' (salinan)'; x.catatan = ''; x.aktif = 'Ya'; x.dipakai = 0; x.terakhir_dipakai = ''; x.ubah = true;
+      if (x.tingkat === 'Umum') x.tingkat = app();
+      W.ui.draf = x; render();
+    },
+    ditinjau: function () { var o = ambilBaris(W.ui.draf); o.catatan = 'Ditinjau ' + R.isoLokal(); kirim(o, 'Ditandai sudah ditinjau.'); }
+  };
+  function pasangPeristiwa() {
+    var akar = W.wd.akar;
+    akar.addEventListener('click', function (ev) {
+      var el = ev.target.closest ? ev.target.closest('[data-a]') : null;
+      if (!el || el.disabled) return;
+      var f = AKSI[el.getAttribute('data-a')];
+      if (f) { ev.preventDefault(); f(el.getAttribute('data-v') || ''); }
+    });
+    akar.addEventListener('input', function (ev) {
+      var k = ev.target.getAttribute && ev.target.getAttribute('data-f');
+      if (!k) return;
+      if (k === 'cari') { W.ui.cari = ev.target.value; var pos = ev.target.selectionStart; render(); var c = $('.cari'); if (c) { c.focus(); try { c.setSelectionRange(pos, pos); } catch (x) { /* diam */ } } return; }
+      if (!W.ui.draf) return;
+      W.ui.draf[k] = ev.target.value; W.ui.draf.ubah = true;
+      if (k === 'tingkat') { render(); return; }
+      segarkanPratinjau();
+    });
+    akar.addEventListener('change', function (ev) {
+      var k = ev.target.getAttribute && ev.target.getAttribute('data-f');
+      if (k && W.ui.draf && ev.target.tagName === 'SELECT') { W.ui.draf[k] = ev.target.value; W.ui.draf.ubah = true; render(); }
+    });
+  }
+
+  return { pasang: pasang, sibuk: sibuk, render: function () { render(); } };
+})();
+KitModul.daftar('pesan-wa', ModulPesanWa);
+
+var CSS_PESAN_WA = "*{box-sizing:border-box}\n.modul-wa{font:15px/1.45 system-ui,-apple-system,\"Segoe UI\",Roboto,Arial,sans-serif;color:#1C2430;padding:4px 0 24px;--garis:#DDE3EA;--pudar:#5B6675;--latar:#F5F7FA}\nh1{font-size:20px;margin:0 0 4px;color:var(--gelap)}\n.sub{color:var(--pudar);font-size:13px;max-width:760px}\n.kepala{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;margin:4px 0 14px;flex-wrap:wrap}\n.kembali{padding:4px 0;margin-bottom:4px;min-height:auto}\n.btn{font:inherit;font-size:14px;border:1px solid var(--garis);background:#fff;color:#1C2430;border-radius:10px;padding:8px 14px;min-height:40px;cursor:pointer}\n.btn:hover{border-color:var(--utama2)}\n.btn.utama{background:var(--utama);border-color:var(--utama);color:#fff;font-weight:600}\n.btn.utama:hover{background:var(--gelap)}\n.btn.bahaya{color:#A3321F;border-color:#E9C3BB}\n.btn.polos{border-color:transparent;background:transparent;color:var(--utama);padding-left:0;padding-right:0}\n.info{display:block;width:100%;text-align:left;font:inherit;font-size:14px;border:0;border-left:4px solid var(--utama2);background:#EEF5F6;padding:10px 12px;border-radius:8px;margin:0 0 12px;color:#1C2430}\n.info.kuning{border-left-color:var(--aksen);background:#FBF4E4;cursor:pointer}\ndiv.info.kuning{cursor:default}\n.alat{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}\n.seg{display:inline-flex;border:1px solid var(--garis);border-radius:10px;overflow:hidden;background:#fff}\n.seg button{font:inherit;font-size:14px;border:0;background:transparent;padding:8px 14px;min-height:38px;cursor:pointer;color:var(--pudar)}\n.seg button[aria-pressed=\"true\"]{background:var(--utama);color:#fff;font-weight:600}\n.seg.kecil button{padding:4px 10px;min-height:30px;font-size:13px}\n.chips{display:flex;gap:6px;flex-wrap:wrap}\n.chips button{font:inherit;font-size:13px;border:1px solid var(--garis);background:#fff;border-radius:999px;padding:5px 12px;min-height:34px;cursor:pointer;color:var(--pudar)}\n.chips button[aria-pressed=\"true\"]{border-color:var(--utama);color:var(--utama);background:#EEF5F6;font-weight:600}\n.cari{flex:1 1 220px;font:inherit;font-size:15px;border:1px solid var(--garis);border-radius:10px;padding:8px 12px;min-height:40px}\n.daftar{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}\n.kartu-item{display:block;text-align:left;font:inherit;width:100%;border:1px solid var(--garis);background:#fff;border-radius:12px;padding:12px 14px;cursor:pointer;color:inherit}\n.kartu-item:hover{border-color:var(--utama2);box-shadow:0 1px 6px rgba(14,90,95,.12)}\n.baris1{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px}\n.baris1 b{font-size:15px;margin-right:2px}\ncode{font:12.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--latar);border-radius:5px;padding:1px 5px;color:var(--gelap)}\n.lencana{font-size:11.5px;border-radius:999px;padding:1px 8px;background:var(--latar);color:var(--pudar);border:1px solid var(--garis)}\n.lencana.t-umum{background:#EEF5F6;color:var(--gelap);border-color:#CFE3E4}\n.lencana.t-lensa{background:#E8F1F1;color:#0E5A5F;border-color:#BFD9DA}\n.lencana.t-monitor{background:#E9EEF9;color:#1F3E8C;border-color:#C7D3EE}\n.lencana.mati{background:#F1F1F1;color:#7A7A7A}\n.lencana.tinjau{background:#FBF4E4;color:#8A6110;border-color:#EBD7A8}\n.ket{font-size:12.5px;color:var(--pudar)}\n.cuplik,.isi-kalimat{font-size:13.5px;color:#36404E;margin:4px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}\n.isi-kalimat{-webkit-line-clamp:3}\n.kosong{color:var(--pudar);padding:24px;text-align:center;border:1px dashed var(--garis);border-radius:12px}\n.sunting{display:grid;grid-template-columns:1fr;gap:16px}\n@media (min-width:900px){.sunting{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}}\n.kolom{min-width:0}\n.label{display:block;font-size:13px;font-weight:600;color:var(--pudar);margin:12px 0 4px}\n.kolom>.label:first-child{margin-top:0}\n.inp{width:100%;font:inherit;font-size:15px;border:1px solid var(--garis);border-radius:10px;padding:9px 12px;background:#fff;color:inherit}\n.inp:disabled{background:var(--latar);color:#36404E}\ntextarea.isi{min-height:260px;resize:vertical;font-size:14.5px;line-height:1.5}\n.dua{display:grid;grid-template-columns:1fr 1fr;gap:10px}\n.penanda{display:flex;flex-wrap:wrap;gap:6px}\n.penanda button{font:12.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;border:1px dashed #B8C6CF;background:#F7FAFB;color:var(--gelap);border-radius:8px;padding:5px 8px;min-height:32px;cursor:pointer}\n.penanda button:hover{border-style:solid;border-color:var(--utama2)}\n.kepala-kecil{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}\n.kepala-kecil .label{margin:0}\n.pratinjau{white-space:pre-wrap;word-break:break-word;background:#E7F6E9;border:1px solid #CBE7CF;border-radius:12px 12px 12px 2px;padding:12px 14px;font-size:14px;line-height:1.5;max-height:560px;overflow:auto}\n.peringatan{margin:10px 0;padding-left:18px;font-size:13px;color:#8A6110}\n.bawah{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--garis)}\n.isi-lebar{flex:1}\n@media (max-width:600px){.daftar{grid-template-columns:1fr}.dua{grid-template-columns:1fr}.bawah .btn{flex:1 1 auto}}\n";
+
 /* === 05-server.gs.js === */
 /**
  * ==========================================================================
@@ -747,7 +1441,7 @@ function gasMuatLembar(peta) {
  * ==========================================================================
  */
 
-var VERSI = '1.21';
+var VERSI = '1.22';
 var TZ = 'Asia/Jakarta';
 var _HARI_INI_UJI = null; // khusus pengujian; biarkan null
 
@@ -759,7 +1453,7 @@ var WARNA = {
 var WARNA_TAB = { petugas: WARNA.biru, otomatis: WARNA.hijau, impor: WARNA.abu, sistem: WARNA.kuning, analisa: '#7A5AA6' };
 
 // Modul inti dulu, lalu modul Analisa (ungu), lalu pengaturan dan data impor
-var URUTAN_TAB = ['HARI_INI', 'PERUSAHAAN', 'ALIAS', 'PENGURUS', 'RELASI', 'JADWAL', 'LOG_INTERAKSI', 'TEMPLAT_WA', 'TINJAU',
+var URUTAN_TAB = ['HARI_INI', 'PERUSAHAAN', 'ALIAS', 'PENGURUS', 'RELASI', 'JADWAL', 'LOG_INTERAKSI', 'TEMPLAT_WA', 'REDAKSI', 'TINJAU',
   'STATUS_PK', 'GRUP', 'ANALISA', 'KPI_MIGRASI', 'KPI_BULANAN', 'RAPOR', 'PENGATURAN', 'PEMETAAN', 'WILAYAH', 'DATA_BU',
   'MONITORING', 'ITW_ITB', 'KARTU_IURAN', 'MIGRASI_DETIL', 'RIWAYAT_BAYAR', 'LOG_IMPOR', 'GALAT', 'APP_DATA'];
 
@@ -773,6 +1467,8 @@ var SKEMA = {
   JADWAL: { jenis: 'petugas', kolom: 'id_jadwal:t tanggal:d jam_mulai:t jam_selesai:t jenis:t judul:t npp_list:t id_pengurus:t lokasi:t kecamatan:t pengingat:t ulang:t status:t hasil:t id_log:t sumber:t id_kalender:t catatan:t' },
   // pustaka pesan WA massal (aplikasi HP › Grup › Kirim pesan massal); bisa diubah dari HP atau di sini
   TEMPLAT_WA: { jenis: 'petugas', kolom: 'id_templat:t nama:t keperluan:t sasaran:t isi:t aktif:t dipakai:n terakhir_dipakai:d diperbarui:t' },
+  // 1.22: Pustaka Redaksi WA bersama LENSA Suite (kalimat baku + templat bertingkat). TEMPLAT_WA & templat_* di PENGATURAN = cadangan lama.
+  REDAKSI: { jenis: 'petugas', kolom: 'id:t jenis:t tingkat:t kunci:t nama:t keperluan:t sasaran:t isi:t aktif:t dipakai:n terakhir_dipakai:d diperbarui:t catatan:t' },
   LOG_INTERAKSI: { jenis: 'petugas', kolom: 'id_log:t tanggal:d npp:t id_pengurus:t jenis:t ringkasan:t komitmen:t tgl_tindak_lanjut:d status:t hasil_posting:t lat:n lng:n foto_url:t' },
   TINJAU: { jenis: 'sistem', kolom: 'id:t waktu:t jenis:t npp:t nama:t kolom:t nilai_lama:t nilai_baru:t keputusan:t diproses:t catatan:t data:t' },
   STATUS_PK: { jenis: 'otomatis', regenerasi: true, kolom: 'npp:t div:t nama:t segmen:t skala:t kecamatan:t jenis_usaha:t grup:t kelompok_saya:t kontak_utama:t status_bayar:t koef:n itw:t itb:t perkiraan_tunggakan:r iuran_terakhir:r blth_posting:t bln_belum_posting:n ibr_nilai:r tk_aktif:n hari_bayar_tipikal:n kebiasaan_bayar:t kebiasaan_sumber:t aksi:t risiko_migrasi:t flags:t kata_kunci:t periode_data:t' },
@@ -824,7 +1520,11 @@ var PILIHAN = {
   'LOG_INTERAKSI.status': ['Terkirim', 'Dibalas', 'Janji bayar', 'Tidak aktif', 'Selesai'],
   'TINJAU.keputusan': ['Terapkan', 'Abaikan'],
   'TEMPLAT_WA.keperluan': ['Tagihan', 'Pengingat', 'Undangan', 'Sosialisasi', 'Pemutakhiran data', 'Ucapan', 'Lainnya'],
-  'TEMPLAT_WA.aktif': ['Ya', 'Tidak']
+  'TEMPLAT_WA.aktif': ['Ya', 'Tidak'],
+  'REDAKSI.jenis': ['Kalimat', 'Templat'],
+  'REDAKSI.tingkat': ['Umum', 'LENSA', 'Monitor'],
+  'REDAKSI.keperluan': ['Tagihan', 'Pengingat', 'Undangan', 'Sosialisasi', 'Pemutakhiran data', 'Ucapan', 'Laporan grup', 'Lainnya'],
+  'REDAKSI.aktif': ['Ya', 'Tidak']
 };
 
 var CATATAN_KOLOM = {
@@ -861,7 +1561,12 @@ var CATATAN_KOLOM = {
   'TEMPLAT_WA.isi': 'Isi pesan. Penanda otomatis per kontak: {salam} {sapaan} {pk} {daftar} {rincian} {total} {kode_iuran} {bulan} {batas} {tanggal} {tk} {program} {petugas} {kantor}. ' +
     'Penanda lain buatan sendiri (mis. {acara}, {tempat}) ditanyakan sekali saat mengirim. Baris baru: Ctrl+Enter.',
   'TEMPLAT_WA.aktif': 'Tidak = disembunyikan dari aplikasi HP (tidak dihapus).',
-  'TEMPLAT_WA.dipakai': 'Jumlah pesan yang ditandai terkirim dengan templat ini (diisi otomatis).'
+  'TEMPLAT_WA.dipakai': 'Jumlah pesan yang ditandai terkirim dengan templat ini (diisi otomatis).',
+  'REDAKSI.jenis': 'Kalimat = kalimat baku (dipanggil di templat dengan {kunci}); Templat = pesan utuh.',
+  'REDAKSI.tingkat': 'Umum = semua aplikasi; LENSA/Monitor = khusus aplikasi itu (menimpa yang Umum dengan kunci sama).',
+  'REDAKSI.kunci': 'Kunci tetap (jangan diubah): dipakai alur otomatis (Hari ini, kartu PK, Monitor). Kosong = templat biasa.',
+  'REDAKSI.isi': 'Ubah lewat LENSA › Pustaka Redaksi WA agar ada pratinjau. Penanda: {pembuka} {penutup} {sapaan} {nama_subjek} {daftar} {rincian} {batas} dst.',
+  'REDAKSI.catatan': '"Perlu ditinjau…" = templat lama yang dipertahankan saat penyeragaman 1.22.'
 };
 
 var LEBAR_KOLOM = {
@@ -1723,7 +2428,7 @@ function siapkanTab_(ss, nama, idx) {
     if (cat) sh.getRange(1, c).setNote(cat);
     sh.setColumnWidth(c, LEBAR_KOLOM[h] || (h.length > 14 ? 130 : 110));
   });
-  if (nama === 'TEMPLAT_WA') {
+  if (nama === 'TEMPLAT_WA' || nama === 'REDAKSI') {
     var cIsi = baru.indexOf('isi') + 1;
     if (cIsi > 0) sh.getRange(2, cIsi, maksR - 1, 1).setWrap(true).setVerticalAlignment('top');
   }
@@ -1770,6 +2475,9 @@ function isiAwal_() {
       return { id_templat: d[0], nama: d[1], keperluan: d[2], sasaran: d[3], isi: d[4], aktif: 'Ya', dipakai: 0, terakhir_dipakai: '', diperbarui: kini };
     }));
   }
+
+  // REDAKSI (1.22): pustaka bawaan + peralihan templat lama, hanya bila tab masih kosong
+  if (!bacaTab_('REDAKSI').data.length) isiRedaksiAwal_();
 
   // WILAYAH
   if (!bacaTab_('WILAYAH').data.length) {
@@ -3214,6 +3922,7 @@ function hitungUlang() {
 function hitungUlang_() {
   pastikanSiap_();
   muatPengaturan_();
+  lupakanRedaksi_();
   lengkapiId_();
   lengkapiNonAsn_();
   try { tandaiImporSelesai_(); } catch (e) { /* diam */ }
@@ -3672,25 +4381,22 @@ function tahap_(d) {
 }
 
 function susunPesan_(p, items, tahap, D, batasTgl) {
+  // 1.22: templat dari Pustaka Redaksi (REDAKSI), disusun oleh penyusun bersama LENSA Suite (kit/redaksi.js)
   var semuaTelat = items.every(function (i) { return i.alasan === 'telat'; });
-  var templat = semuaTelat ? P_('templat_telat') : tahap.kode === 'awal' ? P_('templat_pengingat') : P_('templat_sapu');
-  var tanda = String(P_('penanda_daftar') || '•').trim() || '•';
-  var adaKode = false;
-  var daftar = items.map(function (i) {
-    var t = tanda + ' ' + i.r._namaResmi;
-    if (i.alasan === 'telat' && i.r._blthPosting) t += ' (belum terbayar sejak ' + namaBulan_(blthDariIdx_(mIdx_(i.r._blthPosting) + 1)) + ')';
-    var kode = kodeIuran_(i.r.npp, (D.per && D.per[String(i.r.npp)] || {}).kode_iuran);
-    if (kode) { t += '\n   Kode iuran: ' + kode; adaKode = true; }
-    return t;
-  }).join('\n') + '\n\n' + teksKanalBayar_(adaKode);
+  var kunci = semuaTelat ? 'telat' : tahap.kode === 'awal' ? 'pengingat' : 'sapu';
+  var pus = pustakaLensa_(), t = KitRedaksi.templatKunci(pus, 'LENSA', kunci);
+  var tanda = String(P_('penanda_daftar') || '📌').trim() || '📌', adaKode = false, kode = [];
+  var daftar = KitRedaksi.daftarSubjek(items.map(function (i) {
+    var k = kodeIuran_(i.r.npp, (D.per && D.per[String(i.r.npp)] || {}).kode_iuran);
+    if (k) { adaKode = true; kode.push(k); }
+    return { nama: i.r._namaResmi, kode: k, ket: i.alasan === 'telat' && i.r._blthPosting ? 'belum terbayar sejak ' + namaBulan_(blthDariIdx_(mIdx_(i.r._blthPosting) + 1)) : '' };
+  }), tanda);
   // {salam} sengaja dibiarkan: diisi saat tautan dibuat (Sheets) atau saat tombol WA diketuk (aplikasi HP), sesuai jam kirim.
-  return String(templat)
-    .replace(/\{sapaan\}/g, p.sapaan || 'Bapak/Ibu')
-    .replace(/\{bulan\}/g, namaBulan_(D.bulanIni))
-    .replace(/\{daftar\}/g, daftar)
-    .replace(/\{batas\}/g, tglSedang_(batasTgl))
-    .replace(/\{petugas\}/g, P_('nama_petugas') || 'Petugas pembina')
-    .replace(/\{kantor\}/g, P_('kantor') || '');
+  return KitRedaksi.susun(t, { pustaka: pus, app: 'LENSA', nilai: {
+    sapaan: KitRedaksi.sapaan(p.sapaan, p.nama), nama_pic: teksApi_(p.nama), nama_subjek: KitRedaksi.gabungNama(items.map(function (i) { return i.r._namaResmi; })),
+    daftar: daftar, kode_iuran: kode.join('\n'), npp: items.map(function (i) { return String(i.r.npp); }).join(', '), ada_kode: adaKode,
+    bulan: namaBulan_(D.bulanIni), batas: tglSedang_(batasTgl), batas_hari: String(Pn_('batas_aman_posting')), tanggal: tglSedang_(D.hariIni),
+    petugas: P_('nama_petugas') || 'Petugas BPJS Ketenagakerjaan', kantor: P_('kantor') || '' } });
 }
 
 function tulisHariIni_(D, R) {
@@ -3906,7 +4612,7 @@ function tulisHariIni_(D, R) {
       stats: { aktif: aktif, itb: nItb, itw: nItw, target: target, proyeksi: proyeksi, kurang: kurang, hariKerja: hk, kuota: kuota, kebiasaan: kel },
       kontak: kontak.map(function (x) {
         var p = x.p;
-        return { id: String(p.id_pengurus), nama: p.nama || '', sapaan: p.sapaan || '', wa: x.wa || '', hp: hpTampil_(p.no_wa || p.no_hp_2),
+        return { id: String(p.id_pengurus), nama: p.nama || '', sapaan: KitRedaksi.sapaan(p.sapaan, p.nama), wa: x.wa || '', hp: hpTampil_(p.no_wa || p.no_hp_2),
           kanal: x.wa ? tahap.kanal : 'Telepon', kunci: p.id_pengurus + '|' + tahap.kode + '|' + blth, tunggakan: x.tunggakan,
           pesan: susunPesan_(p, x.items, tahap, D, batasTgl),
           pk: x.items.map(function (i) { return { npp: i.r.npp, nama: i.r.nama, status: i.r.status_bayar, koef: i.r.koef, alasan: i.alasan }; }) };
@@ -5566,6 +6272,7 @@ function pkApi_(s, m, kontak, alias) {
 
 /** Semua data yang dibutuhkan aplikasi dalam satu panggilan. */
 function apiMuat() {
+  lupakanRedaksi_();
   var naik = versiDb_() !== VERSI;
   pastikanSiap_();
   if (naik) hitungUlang_(); // skrip baru: susun ulang STATUS_PK dengan kolom terbaru sebelum dibaca
@@ -5607,8 +6314,8 @@ function apiMuat() {
   try { url = String(ss_().getUrl() || ''); if (url.indexOf('https://') !== 0) url = ''; } catch (e) { url = ''; }
   return bersihApi_({
     versi: VERSI, hariIni: hi, dimuat: sekarangStr_(), petugas: P_('nama_petugas'), kantor: P_('kantor'), urlSheet: url, sppg: sppgAktif_() ? { terakhir: sppgProp_().getProperty('SPPG_TERAKHIR') || '', galat: sppgProp_().getProperty('SPPG_GALAT') || '' } : null,
-    templat: { rincian: P_('templat_rincian'), sapa: P_('templat_sapa'), tanda: P_('penanda_daftar') || '📌' },
-    analisa: modulAktif_('analisa'), pk: pk, jadwal: jadwal, templatWa: templatWa_(), hariIniData: hariIni, dihubungi: dihubungi_(logs), risiko: modulAktif_('analisa') ? bacaAppData_('risiko') : null,
+    templat: { tanda: P_('penanda_daftar') || '📌' }, redaksi: barisRedaksi_(), batasHari: Pn_('batas_aman_posting'),
+    analisa: modulAktif_('analisa'), pk: pk, jadwal: jadwal, hariIniData: hariIni, dihubungi: dihubungi_(logs), risiko: modulAktif_('analisa') ? bacaAppData_('risiko') : null,
     kecamatan: kec, desa: Object.keys(desa).reduce(function (o, k) { o[k] = Object.keys(desa[k]).sort(); return o; }, {}),
     tinjau: tinjauApi_(), usulanBukan: String(P_('usulan_bukan') || '').split(',').filter(String)
   });
@@ -5896,8 +6603,9 @@ function apiSimpanPengurus(id, k) {
     if (h && h.kontak) {
       h.kontak.forEach(function (x) {
         if (String(x.id) !== id) return;
-        x.pesan = gantiSapaan_(x.pesan, x.sapaan, o.sapaan); // x.sapaan = sapaan yang dipakai saat pesan disusun
-        x.nama = o.nama; x.sapaan = o.sapaan; x.hp = o.hp;
+        var sp = KitRedaksi.sapaan(o.sapaan, o.nama);
+        x.pesan = gantiSapaan_(x.pesan, x.sapaan, sp); // x.sapaan = sapaan yang dipakai saat pesan disusun
+        x.nama = o.nama; x.sapaan = sp; x.hp = o.hp;
         if (o.wa) x.wa = o.wa;
         ubah = true;
       });
@@ -6091,10 +6799,125 @@ function apiHapusTemplat(id) {
   } finally { lock.releaseLock(); }
 }
 function catatPakaiTemplat_(id, tanggal) {
-  var x = cariBaris_('TEMPLAT_WA', 'id_templat', teksApi_(id));
+  id = teksApi_(id);
+  var tab = 'REDAKSI', x = ss_().getSheetByName('REDAKSI') ? cariBaris_('REDAKSI', 'id', id) : null;
+  if (!x) { tab = 'TEMPLAT_WA'; x = cariBaris_('TEMPLAT_WA', 'id_templat', id); }
   if (!x) return;
   x.dipakai = (angka_(x.dipakai) || 0) + 1; x.terakhir_dipakai = keTanggal_(tanggal) || hariIniStr_();
-  ubahSel_('TEMPLAT_WA', x, ['dipakai', 'terakhir_dipakai']);
+  ubahSel_(tab, x, ['dipakai', 'terakhir_dipakai']);
+  if (tab === 'REDAKSI') lupakanRedaksi_();
+}
+
+/* ---------- Pustaka Redaksi WA (1.22 · LENSA Suite Tahap 1) ----------
+ * Satu pustaka kalimat baku + templat bertingkat (Umum → LENSA/Monitor → templat) untuk semua aplikasi.
+ * Pesan disusun oleh kit/redaksi.js (KitRedaksi) — sama persis dengan aplikasi LENSA dan Monitor SPPG.
+ * Monitor SPPG menerima salinannya lewat jembatan (jenis 'redaksi'); Tahap 2 pindah ke Hub.
+ */
+var _RDK = null;
+function lupakanRedaksi_() { _RDK = null; }
+function barisRedaksi_() {
+  if (!ss_().getSheetByName('REDAKSI')) return [];
+  return bacaTab_('REDAKSI').data.map(function (o) {
+    var b = KitRedaksi.rapiBaris(o);
+    b.terakhir_dipakai = keTanggal_(o.terakhir_dipakai) || '';
+    b.dipakai = angka_(o.dipakai) || 0;
+    return b;
+  }).filter(function (o) { return o.id; });
+}
+/** Pustaka untuk penyusun (dibaca sekali per hitung; tab kosong → bawaan). */
+function pustakaLensa_() {
+  if (!_RDK) { var b = barisRedaksi_(); _RDK = KitRedaksi.pustaka(b.length ? b : KitRedaksi.bawaan()); }
+  return _RDK;
+}
+function barisTabRedaksi_(b, kini) {
+  return { id: b.id, jenis: b.jenis === 'Kalimat' ? 'Kalimat' : 'Templat', tingkat: b.tingkat || 'Umum', kunci: b.kunci || '', nama: b.nama || '',
+    keperluan: b.keperluan || (b.jenis === 'Kalimat' ? '' : 'Lainnya'), sasaran: b.sasaran || '', isi: b.isi || '', aktif: b.aktif === 'Tidak' ? 'Tidak' : 'Ya',
+    dipakai: b.dipakai || 0, terakhir_dipakai: b.terakhir_dipakai || '', diperbarui: kini, catatan: b.catatan || '' };
+}
+/**
+ * Isi awal REDAKSI (sekali, saat tab masih kosong): pustaka bawaan + peralihan templat lama.
+ * Keputusan 20 Nov 2026: templat bawaan yang belum diubah diganti versi seragam; yang sudah diubah dibiarkan
+ * (tetap dipakai) dan ditandai "Perlu ditinjau".
+ */
+function isiRedaksiAwal_() {
+  var kini = sekarangStr_(), rapi = function (t) { return String(t === null || t === undefined ? '' : t).replace(/\r\n/g, '\n').replace(/\s+$/, '').trim(); };
+  var rows = KitRedaksi.bawaan().map(function (b) { return barisTabRedaksi_(b, kini); }), byId = {}, tambah = [];
+  rows.forEach(function (r) { byId[r.id] = r; });
+  // a) templat_* di PENGATURAN (dipakai Hari ini & kartu PK) yang sudah diubah petugas
+  var PETA = { templat_pengingat: 'pengingat', templat_sapu: 'sapu', templat_telat: 'telat', templat_rincian: 'rincian', templat_sapa: 'perkenalan' }, pg = {};
+  try { bacaTab_('PENGATURAN').data.forEach(function (o) { pg[String(o.kunci || '').trim()] = o.nilai; }); } catch (e) { /* tab belum ada */ }
+  Object.keys(PETA).forEach(function (k) {
+    var v = rapi(pg[k]), def = DEF_PENGATURAN.filter(function (d) { return d[0] === k; })[0];
+    if (!v || (def && v === rapi(def[1])) || (TEMPLAT_LAMA[k] && v === rapi(TEMPLAT_LAMA[k]))) return;
+    var asal = rows.filter(function (r) { return r.jenis === 'Templat' && r.kunci === PETA[k]; })[0];
+    if (!asal) return;
+    var ket = 'Perlu ditinjau: isi lama Anda dari PENGATURAN ' + k + ' tetap dipakai.', isiLama = String(pg[k]).replace(/\r\n/g, '\n');
+    if (asal.tingkat === 'LENSA') {
+      tambah.push(barisTabRedaksi_({ id: asal.id + '-seragam', jenis: 'Templat', tingkat: 'LENSA', nama: asal.nama + ' (versi seragam)', keperluan: asal.keperluan,
+        sasaran: asal.sasaran, isi: asal.isi, aktif: 'Tidak', catatan: 'Versi seragam 1.22. Salin isinya ke "' + asal.nama + '" bila ingin dipakai.' }, kini));
+      asal.isi = isiLama; asal.catatan = ket + ' Versi seragam: "' + asal.nama + ' (versi seragam)".';
+    } else {
+      tambah.push(barisTabRedaksi_({ id: 'L-lama-' + asal.kunci, jenis: 'Templat', tingkat: 'LENSA', kunci: asal.kunci, nama: asal.nama + ' (lama)', keperluan: asal.keperluan,
+        sasaran: asal.sasaran, isi: isiLama, catatan: ket + ' Versi seragam: templat Umum "' + asal.nama + '" (hapus versi khusus ini untuk memakainya).' }, kini));
+    }
+  });
+  // b) TEMPLAT_WA (kirim pesan massal)
+  var PETA_T = { T0001: 'U-rincian', T0002: 'U-pengingat', T0003: 'U-undangan', T0004: 'L-ajakan_program', T0005: 'U-pembaruan_data', T0006: 'U-ucapan' };
+  if (ss_().getSheetByName('TEMPLAT_WA')) bacaTab_('TEMPLAT_WA').data.forEach(function (o) {
+    var id = String(o.id_templat || '').trim();
+    if (!id || !rapi(o.isi)) return;
+    var def = DEF_TEMPLAT_WA.filter(function (d) { return d[0] === id; })[0], tujuan = byId[PETA_T[id]];
+    if (def && rapi(o.isi) === rapi(def[4])) { // masih bawaan → diganti versi seragam; hitungan pemakaian ikut pindah
+      if (tujuan) {
+        tujuan.dipakai = (+tujuan.dipakai || 0) + (angka_(o.dipakai) || 0);
+        var tl = keTanggal_(o.terakhir_dipakai);
+        if (tl && (!tujuan.terakhir_dipakai || tl > tujuan.terakhir_dipakai)) tujuan.terakhir_dipakai = tl;
+      }
+      return;
+    }
+    tambah.push(barisTabRedaksi_({ id: id, jenis: 'Templat', tingkat: 'LENSA', nama: teksApi_(o.nama) || id, keperluan: teksApi_(o.keperluan) || 'Lainnya',
+      sasaran: teksApi_(o.sasaran), isi: String(o.isi).replace(/\r\n/g, '\n'), aktif: teksApi_(o.aktif) === 'Tidak' ? 'Tidak' : 'Ya',
+      dipakai: angka_(o.dipakai) || 0, terakhir_dipakai: keTanggal_(o.terakhir_dipakai) || '',
+      catatan: 'Perlu ditinjau: templat lama dari TEMPLAT_WA ' + id + (def ? ' (bawaan yang sudah Anda ubah).' : ' (buatan Anda).') }, kini));
+  });
+  tambahBaris_('REDAKSI', rows.concat(tambah));
+  lupakanRedaksi_();
+}
+/** Menambah / mengubah satu kalimat baku atau templat (aplikasi LENSA › Pustaka Redaksi WA; hanya perangkat Pemilik). */
+function apiSimpanRedaksi(o) {
+  o = o || {};
+  var jenis = o.jenis === 'Kalimat' ? 'Kalimat' : 'Templat', isi = String(o.isi || '').replace(/\r\n/g, '\n').replace(/\s+$/, '');
+  var tingkat = PILIHAN['REDAKSI.tingkat'].indexOf(teksApi_(o.tingkat)) >= 0 ? teksApi_(o.tingkat) : 'LENSA', kunci = teksApi_(o.kunci);
+  if (jenis === 'Templat' && !teksApi_(o.nama)) throw new Error('Nama templat belum diisi.');
+  if (!isi.trim()) throw new Error('Isi belum diisi.');
+  if (isi.length > 4000) throw new Error('Isi terlalu panjang (maks. 4.000 huruf).');
+  if (/wa\.me\//i.test(isi)) throw new Error('Jangan memakai tautan wa.me; LENSA Suite memakai api.whatsapp.com.');
+  if (jenis === 'Kalimat' && !kunci) throw new Error('Kalimat baku harus punya kunci.');
+  var kep = PILIHAN['REDAKSI.keperluan'].indexOf(teksApi_(o.keperluan)) >= 0 ? teksApi_(o.keperluan) : (jenis === 'Kalimat' ? '' : 'Lainnya');
+  var aktif = teksApi_(o.aktif) === 'Tidak' ? 'Tidak' : 'Ya';
+  var lock = kunciApi_();
+  try {
+    pastikanSiap_();
+    var t = bacaTab_('REDAKSI'), id = teksApi_(o.id), kini = sekarangStr_();
+    var x = id ? t.data.filter(function (r) { return String(r.id) === id; })[0] : null;
+    // versi khusus (kunci + tingkat sama) yang pernah dinonaktifkan dipakai lagi, bukan dibuat ganda
+    if (!x && kunci) x = t.data.filter(function (r) { return String(r.kunci) === kunci && String(r.tingkat) === tingkat && String(r.jenis) === jenis; })[0] || null;
+    if (x) {
+      if (String(x.tingkat) === 'Umum' && String(x.jenis) === 'Kalimat' && aktif === 'Tidak') throw new Error('Kalimat baku Umum tidak bisa dinonaktifkan; ubah isinya saja.');
+      if (String(x.tingkat) === 'Umum' && teksApi_(x.kunci) && aktif === 'Tidak') throw new Error('Templat Umum ini dipakai otomatis; buat versi khusus bila ingin isi lain.');
+      x.nama = teksApi_(o.nama) || x.nama; x.keperluan = kep || x.keperluan; x.sasaran = teksApi_(o.sasaran); x.isi = isi; x.aktif = aktif;
+      x.catatan = teksApi_(o.catatan); x.diperbarui = kini;
+      if (!teksApi_(x.kunci)) x.tingkat = tingkat;
+      ubahSel_('REDAKSI', x, ['nama', 'keperluan', 'sasaran', 'isi', 'aktif', 'catatan', 'diperbarui', 'tingkat']);
+      id = String(x.id);
+    } else {
+      id = id || idBerikut_('R', t.data.map(function (r) { return r.id; }))();
+      tambahBaris_('REDAKSI', [barisTabRedaksi_({ id: id, jenis: jenis, tingkat: tingkat, kunci: kunci, nama: teksApi_(o.nama), keperluan: kep, sasaran: teksApi_(o.sasaran),
+        isi: isi, aktif: aktif, catatan: teksApi_(o.catatan) }, kini)]);
+    }
+    lupakanRedaksi_();
+    return bersihApi_({ ok: true, id: id, redaksi: barisRedaksi_() });
+  } finally { lock.releaseLock(); }
 }
 
 /** Tanda "sudah dihubungi" untuk satu kontak di daftar Hubungi hari ini (sama dengan centang di tab HARI_INI). */
@@ -6602,6 +7425,7 @@ function terimaDariSppg_(mon, h) {
   var adaNpp = nppDikenalLensa_();
   terimaPicSppg_(ev.filter(function (e) { return e.jenis === 'pic' && e.data; }), adaNpp, h);
   terimaCatatanSppg_(ev.filter(function (e) { return e.jenis === 'log' && e.data; }), adaNpp, h);
+  terimaTemplatSppg_(ev.filter(function (e) { return e.jenis === 'templat_lama' && e.data; }));
   h.masuk = ev.length;
   pr.setProperty('SPPG_MASUK', String(ev[ev.length - 1].seq));
 }
@@ -6634,6 +7458,41 @@ function terimaBerkasSppg_(daftar, h) {
   hasil.forEach(function (r) { h.impor.push((r.ok ? '✓ ' : '✗ ') + r.ringkas); });
   // hasil impor dikabarkan ke Monitor SPPG
   tulisSppg_(hasil.map(function (r) { return { jenis: 'impor', id: idWaktu_('H'), data: { ok: !!r.ok, ringkas: String(r.ringkas || '').slice(0, 400), waktu: sekarangStr_() } }; }));
+}
+
+/** Baris pustaka yang dipakai Monitor SPPG (Umum + khusus Monitor). */
+function barisRedaksiSppg_() {
+  return barisRedaksi_().filter(function (o) { return o.tingkat === 'Umum' || o.tingkat === 'Monitor'; }).map(function (o) {
+    return { id: o.id, jenis: o.jenis, tingkat: o.tingkat, kunci: o.kunci, nama: o.nama, keperluan: o.keperluan, sasaran: o.sasaran, isi: o.isi, aktif: o.aktif, catatan: o.catatan };
+  });
+}
+/** Templat Monitor SPPG ≤ 1.4 yang sudah diubah admin/pemilik (dikirim sekali oleh Monitor 1.5) → REDAKSI tingkat Monitor, tetap dipakai, ditandai. */
+var KUNCI_MONITOR_LAMA = { tagihan: 'rincian', pengingat: 'pengingat', terima_kasih: 'terima_kasih', ibr: 'ibr', pendaftaran: 'pendaftaran', sapa: 'sapa_singkat' };
+var KEPERLUAN_MONITOR_LAMA = { tagihan: 'Tagihan', pengingat: 'Pengingat', terima_kasih: 'Ucapan', ibr: 'Tagihan', pendaftaran: 'Lainnya', sapa: 'Lainnya' };
+function terimaTemplatSppg_(daftar) {
+  if (!daftar.length) return;
+  var lock = kunciApi_();
+  try {
+    pastikanSiap_();
+    var ada = {}, kini = sekarangStr_(), baru = [];
+    bacaTab_('REDAKSI').data.forEach(function (r) { ada[String(r.id)] = true; });
+    var ket = 'Perlu ditinjau: templat lama Monitor SPPG yang sudah diubah sebelum penyeragaman; tetap dipakai di Monitor.';
+    daftar.forEach(function (e) {
+      (e.data.templat || []).forEach(function (t) {
+        var idLama = teksApi_(t.id) || 'x', id = 'M-lama-' + idLama.replace(/[^\w-]/g, '').slice(0, 30);
+        if (ada[id] || !teksApi_(t.isi)) return;
+        ada[id] = true;
+        baru.push(barisTabRedaksi_({ id: id, jenis: 'Templat', tingkat: 'Monitor', kunci: KUNCI_MONITOR_LAMA[idLama] || '', nama: (teksApi_(t.nama) || idLama) + ' (lama)',
+          keperluan: KEPERLUAN_MONITOR_LAMA[idLama] || 'Lainnya', sasaran: teksApi_(t.sasaran), isi: String(t.isi).replace(/\r\n/g, '\n'), catatan: ket }, kini));
+      });
+      if (teksApi_(e.data.grup) && !ada['M-lama-grup']) {
+        ada['M-lama-grup'] = true;
+        baru.push(barisTabRedaksi_({ id: 'M-lama-grup', jenis: 'Templat', tingkat: 'Monitor', kunci: 'grup_harian', nama: 'Laporan grup harian (lama)', keperluan: 'Laporan grup',
+          isi: String(e.data.grup).replace(/\r\n/g, '\n'), catatan: ket }, kini));
+      }
+    });
+    if (baru.length) { tambahBaris_('REDAKSI', baru); lupakanRedaksi_(); }
+  } finally { lock.releaseLock(); }
 }
 
 function terimaPicSppg_(daftar, adaNpp, h) {
@@ -6764,7 +7623,12 @@ function kirimPerubahanSppg_(paksa) {
   });
   if (maksBaru !== maks) pr.setProperty('SPPG_LOG_MAKS', String(maksBaru));
 
+  // 1.22: Pustaka Redaksi WA (Umum + khusus Monitor) bila berubah
+  var rdk = barisRedaksiSppg_(), hRdk = hashSppg_(JSON.stringify(rdk));
+  if (rdk.length && hRdk !== pr.getProperty('SPPG_REDAKSI')) ev.push({ jenis: 'redaksi', id: 'pustaka', data: { baris: rdk, u: Date.now(), versi: VERSI } });
+
   var n = tulisSppg_(ev);
+  if (rdk.length) pr.setProperty('SPPG_REDAKSI', hRdk);
   try { pr.setProperty('SPPG_DIUBAH', String(DriveApp.getFileById(ss_().getId()).getLastUpdated().getTime())); } catch (e) { /* diam */ }
   return n;
 }
@@ -6796,7 +7660,8 @@ function kirimBerkasSppg_(namaFile, grid, an, peta, data) {
  */
 var APP_FN_TULIS = ['apiSimpanPk', 'apiGeotag', 'apiKelompok', 'apiGantiKelompok', 'apiSimpanKontak', 'apiLepasKontak', 'apiSimpanPengurus',
   'apiPkKontak', 'apiSatukanOrang', 'apiCatat', 'apiSimpanTemplat', 'apiHapusTemplat', 'apiCentang', 'apiCentangPk', 'apiSimpanJadwal', 'apiHitung', 'apiImporApp',
-  'apiPutuskanTinjau', 'apiUsulanBukan'];
+  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi'];
+var APP_FN_HANYA_PEMILIK = { apiSimpanRedaksi: 'Pustaka Redaksi WA hanya bisa diubah dari perangkat Pemilik.' };
 var APP_FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg']; // butuh internet / spreadsheet lain: tidak bisa di perangkat
 var APP_FN_AKSES = ['apiAksesMuat', 'apiAksesPerintah', 'apiAksesServer']; // pengelola perangkat & pengguna (hanya perangkat Pemilik)
 var APP_TAB_LEWATI = { GALAT: true, SINKRON_SPPG: true, PERANGKAT: true, UNDANGAN: true, LOG_AKSES: true }; // tab akses hanya di spreadsheet
@@ -6876,8 +7741,9 @@ function jalankanApp_(ops, ctx) {
   var peta = { apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak,
     apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat,
     apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiSimpanJadwal: apiSimpanJadwal,
-    apiHitung: apiHitung, apiImporApp: apiImporApp, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan };
+    apiHitung: apiHitung, apiImporApp: apiImporApp, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiSimpanRedaksi: apiSimpanRedaksi };
   var out = aksesJalankan_(ctx || { idp: '' }, ops, function (op) {
+    if (APP_FN_HANYA_PEMILIK[op.fn] && ctx && !ctx.lama && ctx.peran !== 'Pemilik') throw new Error(APP_FN_HANYA_PEMILIK[op.fn]);
     try { peta[op.fn].apply(null, op.args || []); }
     catch (er) { catatGalat_('LENSA 2.x · ' + op.fn, er.message, VERSI, (ctx && ctx.perangkat) || 'aplikasi'); throw er; } // gagal karena data (mis. PK tidak ada): tidak diulang terus
   }, APP_FN_TULIS, function (cid) { return sudahDiproses_('app:' + cid); }, function (cid) { tandaiDiproses_('app:' + cid); });
@@ -6910,7 +7776,7 @@ function panggilApp_(fn, args, ctx) {
 }
 
 /* === 06-fungsi === */
-var FUNGSI_LENSA = {apiMuat: apiMuat, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiRiwayat: apiRiwayat, apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak, apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat, apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiGalat: apiGalat, apiSimpanJadwal: apiSimpanJadwal, apiUraiPeta: apiUraiPeta, apiHitung: apiHitung, apiJembatanSppg: apiJembatanSppg, apiImporApp: apiImporApp};
+var FUNGSI_LENSA = {apiMuat: apiMuat, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiRiwayat: apiRiwayat, apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak, apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat, apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiSimpanRedaksi: apiSimpanRedaksi, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiGalat: apiGalat, apiSimpanJadwal: apiSimpanJadwal, apiUraiPeta: apiUraiPeta, apiHitung: apiHitung, apiJembatanSppg: apiJembatanSppg, apiImporApp: apiImporApp};
 var CSS_LAYAR2 = ":host{\n  --biru:#0E5A5F;--biru2:#157A80;--biruTua:#0A4347;--biruL:#E1F0F0;--emas:#C9972B;--teks:#16202E;--pudar:#566070;--garis:#E3E6EC;--garis2:#C9CED8;--latar:#F3F4F7;--putih:#fff;\n  --tepat:#1F7A56;--tepatL:#E3F2E9;--lalu:#3F63B8;--laluL:#E8ECF7;--m2:#E0A81E;--m3:#D97A1E;--m4:#C4551C;--m5:#A33319;--m6:#7E1A1A;--merahL:#F9E1DF;--kuningL:#FBEFD5;\n  --wa:#17794A;--r:14px;--bayang:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);\n  --huruf:\"Segoe UI\",system-ui,-apple-system,Roboto,\"Helvetica Neue\",Arial,sans-serif;\n}\n*{box-sizing:border-box}\n:host{margin:0;padding:0;background:var(--latar);color:var(--teks);font:15px/1.45 var(--huruf);-webkit-text-size-adjust:100%}\nbutton,input,select,textarea{font:inherit;color:inherit}\ninput,select,textarea{font-size:15px}\na{color:var(--biru)}\nh1,h2,h3{margin:0;line-height:1.2}\n.angka{font-variant-numeric:tabular-nums}\n[hidden]{display:none!important}\n\n/* ---------- kerangka ---------- */\n.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;background:linear-gradient(90deg,var(--biru) 232px,var(--latar) 232px)}\n.sisi{background:var(--biru);color:#fff;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:20px 12px 14px;gap:18px;overflow-y:auto}\n.merek{padding:0 8px}\n.merek-judul{font-size:21px;font-weight:700;letter-spacing:-.2px}\n.merek-sub{font-size:12px;color:#C9D3EE;margin-top:2px}\n.nav{display:flex;flex-direction:column;gap:2px}\n.nav button{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:10px;background:none;color:#DCE3F5;font-weight:500;text-align:left;cursor:pointer}\n.nav button:hover{background:rgba(255,255,255,.08);color:#fff}\n.nav button[aria-current=\"page\"]{background:#fff;color:var(--biru);font-weight:700}\n.nav svg{width:20px;height:20px;flex:none}\n.nav .lencana{margin-left:auto;background:#FBEFD5;color:#5C3D00;border-radius:999px;font-size:12px;font-weight:700;padding:1px 8px}\n.sisi-bawah{margin-top:auto;font-size:12px;color:#C9D3EE;padding:0 8px;display:flex;flex-direction:column;gap:6px}\n.titik{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7FE0B0;margin-right:6px;vertical-align:middle}\n.titik.kuning{background:#F5C451}\n.isi{min-width:0;padding:26px 32px 48px;outline:none}\n.isi-dalam{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:18px}\n\n.kepala{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}\n.kepala h1{font-size:26px;font-weight:700;letter-spacing:-.3px}\n.kepala .sub{color:var(--pudar);margin-top:4px}\n.kepala-aksi{display:flex;gap:8px;flex-wrap:wrap}\n\n/* ---------- komponen ---------- */\n.kartu{background:#fff;border-radius:var(--r);box-shadow:var(--bayang);padding:18px 20px}\n.kartu h2{font-size:17px;font-weight:700}\n.kartu-kepala{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}\n.kartu-kepala .ket{color:var(--pudar);font-size:13px}\n.label-kecil{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--pudar);text-transform:uppercase}\n.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr));gap:18px}\n.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:14px}\n.ubin{background:#fff;border-radius:var(--r);box-shadow:var(--bayang);padding:16px 18px;display:flex;flex-direction:column;gap:4px}\n.ubin .besar{font-size:32px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums}\n.ubin .besar small{font-size:16px;color:var(--pudar);font-weight:600}\n.ubin .ket{font-size:13px;color:var(--pudar)}\n\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--garis2);background:#fff;color:var(--teks);font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}\n.btn:hover{border-color:#9AA3B2;background:#FAFBFC}\n.btn:disabled{opacity:.5;cursor:not-allowed}\n.btn.utama{background:var(--biru);border-color:var(--biru);color:#fff}\n.btn.utama:hover{background:var(--biruTua)}\n.btn.wa{background:var(--wa);border-color:var(--wa);color:#fff}\n.btn.wa:hover{background:#11633C}\n.btn.bahaya{color:#9E2A22;border-color:#E3B4AF}\n.btn.kecil{min-height:34px;padding:0 10px;font-size:13px;border-radius:8px}\n.btn.polos{border-color:transparent;background:none;color:var(--biru)}\n.btn.polos:hover{background:var(--biruL)}\n.btn svg{width:18px;height:18px;flex:none}\n\n.chip-baris{display:flex;flex-wrap:wrap;gap:8px}\n.chip{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--garis2);background:#fff;font-size:13px;font-weight:500;cursor:pointer}\n.chip[aria-pressed=\"true\"]{background:var(--teks);border-color:var(--teks);color:#fff}\n.kotak{width:10px;height:10px;border-radius:3px;flex:none;display:inline-block}\n.seg{display:inline-grid;grid-auto-flow:column;gap:4px;background:#E3E6EC;border-radius:12px;padding:4px}\n.seg button{min-height:36px;padding:0 14px;border:0;border-radius:9px;background:none;font-weight:600;color:var(--pudar);cursor:pointer}\n.seg button[aria-pressed=\"true\"]{background:#fff;color:var(--teks);box-shadow:0 1px 2px rgba(16,24,40,.12)}\n\n.lencana-st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:6px;padding:3px 8px;white-space:nowrap}\n.st-tepat{background:var(--tepatL);color:#155C40}\n.st-lalu{background:var(--laluL);color:#2B4A93}\n.st-m2{background:#FBF0D2;color:#6B4A00}\n.st-m3{background:#FBE5CC;color:#7A3F00}\n.st-m4{background:#F9DCCB;color:#8A3410}\n.st-m5,.st-m6,.st-mx{background:var(--m6);color:#fff}\n.st-abu{background:#EEF0F4;color:var(--pudar)}\n\n.field{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600;color:var(--pudar)}\n.inp{min-height:40px;border:1px solid var(--garis2);border-radius:10px;padding:0 12px;background:#fff;width:100%;color:var(--teks);font-weight:400}\ntextarea.inp{padding:10px 12px;min-height:120px;resize:vertical;line-height:1.45}\n.inp:focus,.btn:focus-visible,.chip:focus-visible,.nav button:focus-visible{outline:3px solid #9AAAD3;outline-offset:1px}\nselect.inp{padding-right:28px}\n.baris-saring{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}\n.baris-saring .field{min-width:170px}\n.cari{position:relative;flex:1 1 260px}\n.cari input{padding-left:38px}\n.cari svg{position:absolute;left:12px;top:11px;width:18px;height:18px;color:var(--pudar)}\n\n/* ---------- tabel ---------- */\n.tabel-bungkus{overflow:auto;border-radius:var(--r);background:#fff;box-shadow:var(--bayang)}\ntable.tabel{width:100%;border-collapse:collapse;font-size:14px}\n.tabel th{position:sticky;top:0;background:#F7F8FA;text-align:left;font-size:12px;font-weight:700;color:var(--pudar);padding:10px 12px;border-bottom:1px solid var(--garis);white-space:nowrap;z-index:1}\n.tabel td{padding:10px 12px;border-bottom:1px solid var(--garis);vertical-align:middle}\n.tabel tr.klik{cursor:pointer}\n.tabel tr.klik:hover td{background:#FAFBFD}\n.tabel .kanan{text-align:right}\n.tabel .nama{font-weight:700}\n.tabel .sub{font-size:12px;color:var(--pudar)}\n.tabel tr:last-child td{border-bottom:0}\n.no{color:var(--pudar);font-size:12px;width:36px}\n\n/* bulan bayar per NPP */\n.bulan{display:grid;grid-template-columns:repeat(6,13px);gap:4px}\n.bulan span{width:13px;height:13px;border-radius:3px;box-sizing:border-box}\n.bulan .y{background:var(--biru)}\n.bulan .t{border:2px solid var(--m4)}\n.bulan-label{display:grid;grid-template-columns:repeat(6,13px);gap:4px;font-size:10px;color:var(--pudar);text-align:center}\n.npp-mini{display:flex;flex-direction:column;gap:4px}\n.npp-mini .r{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--pudar)}\n.npp-mini .r b{width:58px;font-weight:600;color:var(--teks)}\n\n/* ---------- grafik ---------- */\n.bar-tumpuk{display:flex;gap:2px;height:22px;border-radius:6px;overflow:hidden}\n.bar-tumpuk div{min-width:3px}\n.rekap-baris{display:grid;grid-template-columns:minmax(178px,1.4fr) minmax(70px,1.6fr) 56px 50px;gap:14px;align-items:center;min-height:48px;border-top:1px solid var(--garis);padding:0 4px;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left;cursor:pointer}\n.rekap-baris:hover{background:#FAFBFD}\n.rekap-baris .lbl{display:flex;align-items:center;gap:10px}\n.rekap-baris .lbl small{display:block;color:var(--pudar);font-size:12px;white-space:nowrap}\n.rekap-baris .lbl>span{white-space:nowrap;font-weight:600}\n.rekap-baris .trek{height:12px;background:#EEF0F4;border-radius:4px;overflow:hidden}\n.rekap-baris .trek div{height:12px;border-radius:4px}\n.rekap-baris .n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}\n.rekap-baris .n small{display:block;font-size:11px;color:var(--pudar);font-weight:500}\n.rekap-kepala{display:grid;grid-template-columns:minmax(178px,1.4fr) minmax(70px,1.6fr) 56px 50px;gap:14px;padding:0 4px 6px;font-size:11px;font-weight:700;color:var(--pudar);text-transform:uppercase;letter-spacing:.6px}\n.rekap-kepala span:nth-child(n+3){text-align:right}\n.papan{display:flex;flex-direction:column}\n.papan .baris{display:flex;align-items:center;gap:12px;min-height:56px;border-top:1px solid var(--garis);cursor:pointer;padding:0 4px;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left}\n.papan .baris:hover{background:#FAFBFD}\n.papan .baris:first-child{border-top:0}\n.peringkat{width:28px;height:28px;border-radius:50%;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}\n.papan .tengah{flex:1;min-width:0}\n.papan .tengah b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.papan .tengah small{display:block;color:var(--pudar);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.tren{display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:8px}\n.tren .k{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}\n.tren .b{width:100%;max-width:56px;background:var(--tepat);border-radius:6px 6px 0 0}\n.tren .v{font-weight:700;font-size:13px}\n.tren .t{font-size:11px;color:var(--pudar)}\n\n/* ---------- pemberitahuan ---------- */\n.info{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:var(--kuningL);color:#5C3D00;font-size:14px}\n.info.biru{background:var(--biruL);color:#22356F}\n.info.merah{background:var(--merahL);color:#7E1A1A}\n.info svg{width:18px;height:18px;flex:none;margin-top:2px}\n.kosong{text-align:center;color:var(--pudar);padding:36px 16px}\n.lepas{border:2px dashed var(--garis2);border-radius:var(--r);padding:28px;text-align:center;background:#fff;display:flex;flex-direction:column;align-items:center;gap:10px}\n.lepas.aktif{border-color:var(--biru);background:var(--biruL)}\n.lepas p{margin:0;color:var(--pudar)}\n.daftar-hasil{display:flex;flex-direction:column;gap:6px;font-size:14px}\n.daftar-hasil .ok{color:#155C40}\n.daftar-hasil .gagal{color:#9E2A22}\n\n/* ---------- laci rincian ---------- */\n.laci-latar{position:fixed;inset:0;background:rgba(16,24,40,.32);z-index:40}\n.laci{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--latar);z-index:41;overflow-y:auto;box-shadow:-8px 0 24px rgba(16,24,40,.18);display:flex;flex-direction:column}\n.laci-kepala{position:sticky;top:0;background:var(--biru);color:#fff;padding:16px 16px 16px 20px;display:flex;align-items:flex-start;gap:12px;z-index:2}\n.laci-kepala h2{font-size:20px}\n.laci-kepala .sub{color:#DCE3F5;font-size:13px;margin-top:3px}\n.laci-kepala .tutup{margin-left:auto;background:none;border:0;color:#fff;width:40px;height:40px;border-radius:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}\n.laci-kepala .tutup:hover{background:rgba(255,255,255,.15)}\n.laci-isi{padding:16px;display:flex;flex-direction:column;gap:14px}\n.npp-kartu{border:1px solid var(--garis);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}\n.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13px}\n.kv dt{color:var(--pudar)}\n.kv dd{margin:0;font-weight:600}\n.hasil-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}\n.hasil-grid button{min-height:40px;border:1px solid var(--garis2);border-radius:10px;background:#fff;font-weight:500;cursor:pointer;font-size:13px}\n.hasil-grid button[aria-pressed=\"true\"]{border:2px solid var(--biru);background:var(--biruL);color:var(--biru);font-weight:700}\n.riwayat{display:flex;flex-direction:column}\n.riwayat .r{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--garis);font-size:13px}\n.riwayat .r:first-child{border-top:0}\n.riwayat .r .w{color:var(--pudar);width:92px;flex:none}\n\n/* ---------- hubungi ---------- */\n.antre .tabel td{vertical-align:top}\n.panel-hasil{background:#F7F8FA;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;margin-top:8px}\n.panel-hasil .judul{font-weight:700;font-size:13px}\n.panel-hasil .tombol{display:flex;flex-wrap:wrap;gap:6px}\n.kemajuan{height:8px;background:#E3E6EC;border-radius:4px;overflow:hidden}\n.kemajuan div{height:8px;background:var(--wa)}\n\n/* ---------- laporan ---------- */\n.laporan-tata{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);gap:18px;align-items:start}\n.opsi{display:flex;flex-direction:column;gap:14px}\n.opsi label.cek{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer}\n.opsi label.cek input{width:18px;height:18px;margin-top:2px;flex:none}\n.pratinjau-gambar{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}\n.gambar-kartu{background:#fff;border-radius:12px;box-shadow:var(--bayang);padding:10px;display:flex;flex-direction:column;gap:8px}\n.gambar-kartu img{width:100%;border-radius:6px;border:1px solid var(--garis);cursor:zoom-in;background:#fff}\n.gambar-kartu .aksi{display:flex;gap:6px;flex-wrap:wrap}\n.teks-laporan{font:14px/1.5 var(--huruf);white-space:pre-wrap}\ntextarea.inp.teks-laporan{min-height:440px}\n\n/* ---------- dialog & toast ---------- */\n.dialog-latar{position:fixed;inset:0;background:rgba(16,24,40,.4);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px}\n.dialog{background:#fff;border-radius:16px;box-shadow:0 20px 50px rgba(16,24,40,.3);width:min(620px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:22px;display:flex;flex-direction:column;gap:14px}\n.dialog.lebar{width:min(1100px,100%)}\n.dialog h2{font-size:19px}\n.dialog .aksi{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}\n.dialog img.penuh{width:100%;border:1px solid var(--garis);border-radius:8px}\n.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#1B2430;color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:.2s;z-index:80;max-width:min(560px,calc(100vw - 32px))}\n.toast.tampil{opacity:1;transform:translateX(-50%) translateY(0)}\n\n/* ---------- layar sedang & tablet ---------- */\n@media (max-width:1100px){\n  .app{grid-template-columns:86px minmax(0,1fr);background:linear-gradient(90deg,var(--biru) 86px,var(--latar) 86px)}\n  .sisi-bawah{display:none}\n  .sisi{padding:16px 8px;align-items:stretch}\n  .merek-sub,.sisi-bawah span.panjang{display:none}\n  .merek-judul{font-size:13px;text-align:center}\n  .nav button{flex-direction:column;gap:3px;min-height:58px;padding:6px 2px;font-size:11px;text-align:center;justify-content:center}\n  .nav .lencana{position:absolute;margin:0;transform:translate(18px,-16px);font-size:10px;padding:0 6px}\n  .nav button{position:relative}\n  .isi{padding:20px 20px 40px}\n  .laporan-tata{grid-template-columns:minmax(0,1fr)}\n}\n@media (max-width:760px){\n  .app{grid-template-columns:minmax(0,1fr);background:var(--latar)}\n  .sisi{position:sticky;height:auto;flex-direction:row;align-items:center;padding:8px;gap:8px;z-index:30;overflow-x:auto}\n  .merek,.sisi-bawah{display:none}\n  .nav{flex-direction:row;flex:1}\n  .nav button{min-width:76px}\n  .rekap-baris,.rekap-kepala{grid-template-columns:minmax(120px,1fr) minmax(60px,1fr) 52px 52px;gap:8px}\n}\n@media print{.sisi,.kepala-aksi,.laci,.laci-latar{display:none!important}.app{display:block}}\n\n/* ---------- dasbor v2 ---------- */\n.grid5{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:14px}\n.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}\nbutton.ubin{border:0;text-align:left;font:inherit;color:inherit;cursor:pointer}\n.ubin.klikable:hover,.ubin-kecil:hover{box-shadow:0 0 0 2px var(--biru2),var(--bayang)}\n.ubin .besar{font-size:30px}\n.pil-contoh{font-size:11px;font-weight:700;color:#5C3D00;background:var(--kuningL);border-radius:999px;padding:3px 10px}\nsvg.grafik{width:100%;height:auto;display:block;font:12px var(--huruf);fill:var(--pudar)}\nsvg.grafik text{fill:currentColor;color:var(--pudar)}\nsvg.grafik text[fill]{color:inherit}\n.grafik-tombol{display:block;width:100%;padding:0;border:0;background:none;cursor:pointer;border-radius:10px}\n.grafik-tombol:hover{background:#FAFBFD}\n.catatan-grafik{margin:8px 0 0;font-size:14px;color:var(--teks)}\n.catatan-kecil{margin:6px 0 0;font-size:12px;color:var(--pudar)}\n.tunggak-kepala,.tunggak-baris{display:grid;grid-template-columns:118px minmax(40px,1fr) 52px minmax(40px,1fr) 74px;gap:10px;align-items:center}\n.tunggak-kepala{font-size:11px;font-weight:700;color:var(--pudar);text-transform:uppercase;letter-spacing:.6px;padding:0 4px 6px}\n.tunggak-baris{width:100%;min-height:44px;border:0;border-top:1px solid var(--garis);background:none;padding:0 4px;text-align:left;cursor:pointer;font:inherit;font-size:13px;color:inherit}\n.tunggak-baris:hover{background:#FAFBFD}\n.tunggak-baris .trek{height:12px;background:#EEF0F4;border-radius:4px;overflow:hidden}\n.tunggak-baris .trek div{height:12px;border-radius:4px}\n.tunggak-baris .n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}\n.kartu-risiko{border-top:5px solid var(--m6)}\n.risiko-angka{display:flex;flex-direction:column;gap:2px}\n.risiko-angka span{font-size:12px;color:var(--pudar)}\n.risiko-angka b{font-size:21px;font-variant-numeric:tabular-nums}\n.risiko-angka em{font-style:normal;color:var(--m6)}\n.ubin-kecil{border:0;border-radius:10px;padding:10px 12px;background:#EEF0F4;display:flex;flex-direction:column;align-items:flex-start;cursor:pointer;font:inherit;color:inherit}\n.ubin-kecil b{font-size:24px;line-height:1.1}\n.ubin-kecil span{font-size:12px;font-weight:600}\n.ubin-kecil.baik{background:var(--tepatL);color:#155C40}\n.ubin-kecil.buruk{background:var(--merahL);color:var(--m6)}\n.matriks{display:grid;grid-template-columns:128px repeat(4,minmax(0,1fr));gap:4px;margin-top:12px;font-size:12px;text-align:center}\n.matriks [role=columnheader]{color:var(--pudar);font-weight:700;padding:4px 0}\n.matriks .pojok,.matriks .kiri{text-align:left;font-weight:600;color:var(--teks);padding:8px 0}\n.matriks .pojok{color:var(--pudar)}\n.matriks .sel{border:0;border-radius:6px;padding:9px 0;font:inherit;font-weight:700}\n.matriks button.sel{cursor:pointer}\n.matriks button.sel:hover{outline:2px solid var(--biru2)}\n.matriks .sama{background:#E3E6EC}\n.matriks .baik{background:#BFE3CD;color:#155C40}\n.matriks .buruk{background:#F4C9C4;color:var(--m6)}\n.matriks .nol{background:#F7F8FA;color:#9AA3B2;font-weight:400}\n.histo{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:end;height:190px;padding-top:6px}\n.histo .kolom{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%;border:0;background:none;cursor:pointer;font:inherit;color:inherit;border-radius:8px}\n.histo .kolom:hover{background:#FAFBFD}\n.histo .b{width:100%;max-width:58px;border-radius:6px 6px 0 0;display:block}\n.histo small{font-size:12px;color:var(--pudar)}\n.trek-kecil{height:8px;background:#EEF0F4;border-radius:4px;overflow:hidden;display:inline-block;width:70%;vertical-align:middle;margin-right:6px}\n.trek-kecil div{height:8px;background:var(--tepat)}\n.sinkron-status{display:flex;align-items:center;background:none;border:0;color:inherit;font:inherit;font-size:12px;padding:0;cursor:pointer;text-align:left}\n\n/* panel daftar SPPG */\n.kartu-sppg{padding:12px 14px;display:flex;flex-direction:column;gap:6px}\n.kartu-sppg.sudah{background:#F4FAF6}\n.kartu-sppg .atas{display:flex;align-items:center;justify-content:space-between;gap:10px}\n.kartu-sppg .nama-sppg{border:0;background:none;padding:0;font:inherit;font-weight:700;font-size:15px;color:var(--teks);cursor:pointer;text-align:left}\n.kartu-sppg .nama-sppg:hover{color:var(--biru)}\n.kartu-sppg .sub{font-size:12px;color:var(--pudar)}\n.kartu-sppg .pic{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--garis);padding-top:8px}\n.kartu-sppg .pic div:first-child{display:flex;flex-direction:column}\n.kartu-sppg .pic span{font-size:12px;color:var(--pudar)}\n.kartu-sppg .tombol{display:flex;gap:6px;flex-wrap:wrap}\n.kartu-sppg .kontak{font-size:12px;color:var(--pudar)}\n\n/* mode rapat */\n.rapat{position:fixed;inset:0;z-index:90;background:var(--latar);overflow:auto;display:flex;flex-direction:column}\n.rapat-kepala{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--biru);color:#fff;padding:14px 28px;position:sticky;top:0;z-index:2}\n.rapat-kepala b{font-size:22px;display:block}\n.rapat-kepala span{color:#DCE3F5;font-size:14px}\n.rapat-titik{display:flex;gap:8px}\n.rapat-titik button{width:12px;height:12px;border-radius:50%;border:0;background:rgba(255,255,255,.35);cursor:pointer;padding:0}\n.rapat-titik button[aria-current=\"true\"]{background:#fff}\n.rapat-tombol{display:flex;gap:6px}\n.rapat-tombol button{width:44px;height:44px;border-radius:22px;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:20px;cursor:pointer}\n.rapat-tombol button:hover{background:rgba(255,255,255,.25)}\n.rapat-isi{padding:24px 28px 40px;display:flex;flex-direction:column;gap:18px;max-width:1700px;width:100%;margin:0 auto;box-sizing:border-box;zoom:1.12}\n.rapat [data-a=\"klik\"],.rapat [data-a=\"laci\"],.rapat [data-a=\"hubungiIds\"],.rapat [data-in]{pointer-events:none}\n.rapat .btn.polos,.rapat [data-a=\"hubungiIds\"]{display:none}\n@media (min-width:1700px){.rapat-isi{zoom:1.3}}\n@media (max-width:760px){.grid3{grid-template-columns:minmax(0,1fr)}.matriks{grid-template-columns:96px repeat(4,minmax(0,1fr))}}\n\nsvg.grafik .lbl{paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}\n\n.lensa-blok{border-top:1px solid var(--garis);margin-top:14px;padding-top:14px;display:flex;flex-direction:column;gap:6px}\n.btn-sinkron{display:flex;align-items:center;gap:8px;width:100%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;flex-wrap:wrap;text-align:left}\n.btn-sinkron svg{width:16px;height:16px}\n.btn-sinkron small{flex-basis:100%;font-weight:400;font-size:11px;opacity:.8;margin-left:24px;margin-top:-4px}\n.btn-sinkron:hover{background:rgba(255,255,255,.2)}.btn-sinkron:disabled{opacity:.6;cursor:default}\n\n/* ================= LENSA PK 2.0 ================= */\n.grid-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:14px}\n.kpi{background:#fff;border-radius:var(--r);box-shadow:var(--bayang);padding:16px 18px;display:flex;flex-direction:column;gap:4px;cursor:pointer}\n.kpi:hover,.ubin[role=button]:hover,.baris-seg:hover,.baris-kelas:hover,.baris-pk:hover,tr[role=button]:hover{box-shadow:0 0 0 2px var(--biru2),var(--bayang)}\n.kpi-l{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--pudar)}\n.kpi-n{font-size:30px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}\n.kpi-s{font-size:12.5px;color:var(--pudar)}\n.grid-ubin{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}\n.grid-ubin .ubin{box-shadow:none;border:1px solid var(--garis);padding:12px 14px;border-radius:12px;gap:2px}\n.grid-ubin .ubin b{font-size:24px;line-height:1.15}\n.ubin[role=button],.baris-seg,.baris-kelas,.baris-pk,tr[role=button],g[role=button]{cursor:pointer}\n.legenda{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--pudar)}\n.legenda i{display:inline-block;width:12px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}\n.batang{display:flex;height:16px;border-radius:5px;overflow:hidden;background:#EEF0F4;flex:1;min-width:60px}\n.batang.tipis{height:10px}\n.batang span{display:block;height:100%}\n.baris-seg{display:grid;grid-template-columns:minmax(150px,1.2fr) 2fr minmax(130px,1fr);gap:12px;align-items:center;padding:6px 4px;border-radius:8px}\n.baris-kelas{display:grid;grid-template-columns:110px 1fr 100px;gap:10px;align-items:center;padding:4px;border-radius:8px}\n.baris-ef{display:grid;grid-template-columns:1fr 120px 44px;gap:10px;align-items:center;font-size:13px}\n.kanan{text-align:right;font-size:12.5px}\n.catatan{font-size:12.5px;color:var(--pudar);border-top:1px solid var(--garis);padding-top:10px}\n.tabel-wrap{overflow-x:auto}\n.tabel td.r,.tabel th.r{text-align:right}\n.baris-pk{display:grid;grid-template-columns:4px 1fr auto;gap:12px;align-items:center;padding:10px 8px 10px 0;border-top:1px solid var(--garis);border-radius:6px}\n.baris-pk .strip{align-self:stretch;border-radius:2px}\n.pk-isi{display:flex;flex-direction:column;min-width:0}\n.pk-isi b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis}\n.daftar{display:flex;flex-direction:column}\n.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}\n.aksi-baris{display:flex;gap:8px;flex-wrap:wrap}\n.ikon-btn{margin-left:auto;background:none;border:0;color:#fff;width:40px;height:40px;border-radius:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}\n.ikon-btn:hover{background:rgba(255,255,255,.15)}\n.kartu h3{margin:0 0 8px;font-size:15px}\n.kv span{color:var(--pudar)}\n.baris-kontak{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--garis)}\n.pil{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--biruL,#E8EDF8);color:var(--biru)}\n.btn.wa{background:#1F7A56;color:#fff;border-color:#1F7A56}\n.gambar-rinci{width:100%;border:1px solid var(--garis);border-radius:8px;margin-top:10px}\n.tbl-wrap{overflow-x:auto}\ntable.rinci{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}\ntable.rinci th,table.rinci td{padding:6px 8px;border-bottom:1px solid var(--garis);text-align:right}\ntable.rinci th:first-child,table.rinci td:first-child{text-align:left}\ntable.rinci tr.tot td{font-weight:700;border-top:2px solid var(--teks)}\n.daftar-hasil .info{color:var(--pudar)}\nsvg.grafik .grid{stroke:var(--garis)}\nsvg.grafik .ax{font-size:11px}\nsvg.grafik .lbl{font-size:12px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}\nsvg.grafik .ln-ini{fill:none;stroke:#0E5A5F;stroke-width:3}\nsvg.grafik .ln-lalu{fill:none;stroke:#9AA3B2;stroke-width:2}\nsvg.grafik .ln-proy{fill:none;stroke:#0E5A5F;stroke-width:2;stroke-dasharray:5 4}\nsvg.grafik .ln-target{stroke:#C2410C;stroke-width:1.5;stroke-dasharray:6 4}\nsvg.grafik .ln-itb{fill:none;stroke:#1F7A56;stroke-width:2.5}\nsvg.grafik .ln-itw{fill:none;stroke:#3F63B8;stroke-width:2.5}\nsvg.grafik .pt-itb{fill:#1F7A56}\nsvg.grafik .pt-itw{fill:#3F63B8}\n@media (max-width:760px){.baris-seg{grid-template-columns:1fr}.baris-seg .kanan{text-align:left}.kpi-n{font-size:26px}}\n.laci-kepala .btn.polos{color:#fff;border-color:rgba(255,255,255,.4);background:transparent;white-space:nowrap}\n.kepala{margin-bottom:4px}\n.isi>.grid-kpi,.isi>.kartu,.isi>.grid2{margin-bottom:18px}\n/* --- tahap 2: sinkron, PIN, \"Sudah terkirim?\" --- */\n.sisi-bawah .btn-sinkron{width:100%;justify-content:center;margin-bottom:4px}\n.sisi-bawah .kecil,.kecil{font-size:12px}\n.tanya-wa{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#E3F2E9;border:1px solid #BFE0CC;color:#1B4D33;border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:14px}\n.tanya-wa span{flex:1;min-width:160px}\n.form-sinkron{display:flex;flex-direction:column;gap:8px;margin-top:10px}\n.form-sinkron .field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--pudar)}\n.kepala-aksi{display:flex;gap:8px;flex-wrap:wrap}\n@media (max-width:760px){.sisi .btn-sinkron{display:none}}\n\n/* tambahan saat dasbor/data dipasang di dalam aplikasi (Shadow DOM) */\n:host{display:block;color:var(--teks);font:15px/1.45 var(--huruf)}\n.isi{padding:0 0 32px}\n.kepala{margin-top:4px}\n.kepala h1{font-size:20px}\n@media (min-width:760px){.kepala{display:none}}\n@media (max-width:600px){.grid-kpi{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.kpi-n{font-size:22px}}\n.form-sinkron{max-width:760px}\n/* komputer: ukuran huruf kartu bawah dasbor setara kartu angka di atas */\n@media (min-width:760px){\n  table.tabel{font-size:15.5px}\n  .tabel th{font-size:13px;padding:12px 14px}\n  .tabel td{padding:12px 14px}\n  .baris-ef{font-size:15px;grid-template-columns:1fr 160px 52px}\n  .baris-seg,.baris-kelas{font-size:15px}\n  .legenda{font-size:13px}\n  .catatan{font-size:13.5px}\n  .catatan-kecil{font-size:13px}\n  .grid-ubin .ubin b{font-size:clamp(18px,1.45vw,28px);white-space:nowrap}\n  .ubin-kecil b{font-size:28px}.ubin-kecil span{font-size:13px}\n}\n\n/* Perangkat & pengguna (2.3) */\n.lencana{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap;vertical-align:1px}\n.l-aktif{background:#E3F4EC;color:#1F7A56}.l-tutup{background:#FFF1D6;color:#8A5A00}.l-cabut{background:#ECEEF2;color:#5B6470}\n.l-lihat{background:#E8ECF7;color:#2B4FA8}.l-pemilik{background:#F6EBD2;color:#7A5A12}.l-ini{background:#DDEFEF;color:#0E5A5F}\n.baris-mati td{opacity:.6}\n.aksi-sel{white-space:nowrap;text-align:right}.aksi-sel .btn{margin-left:4px}\n.form-undang{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px;margin:6px 0 4px}\n.kode-undangan{border:1.5px dashed #C9972B;background:#FFFBF0;border-radius:12px;padding:12px 14px;margin:0 0 14px}\n.kode-undangan code{display:block;margin:8px 0;padding:10px;background:#fff;border:1px solid #E6DCC3;border-radius:8px;font:13px ui-monospace,Consolas,monospace;word-break:break-all}\n.baris-undangan{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--garis);font-size:13.5px}\n.daftar-undangan{margin-top:8px}\n.riwayat-cabut{margin-top:10px;font-size:13.5px}.riwayat-cabut summary{cursor:pointer;color:var(--pudar);padding:4px 0}\n";
 
 /* === 11-xlsx.js === */
@@ -7254,7 +8120,7 @@ function gambarRincian(p, r) {
  *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
  *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.3.0';
+var VERSI_APP = '2.4.0';
 var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
 function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, antre: [], gagal: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
@@ -7516,7 +8382,7 @@ function bacaTabAman(nama) {
  * ---------------------------------------------------------------------- */
 var FN_TULIS = ['apiSimpanPk', 'apiGeotag', 'apiKelompok', 'apiGantiKelompok', 'apiSimpanKontak', 'apiLepasKontak', 'apiSimpanPengurus',
   'apiPkKontak', 'apiSatukanOrang', 'apiCatat', 'apiSimpanTemplat', 'apiHapusTemplat', 'apiCentang', 'apiCentangPk', 'apiSimpanJadwal', 'apiHitung', 'apiImporApp',
-  'apiPutuskanTinjau', 'apiUsulanBukan'];
+  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi'];
 /** Hanya bisa di server (butuh internet / spreadsheet lain). */
 var FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg'];
 var SINK = { janji: null, tunda: null, setelah: null, berjalan: false };
@@ -8120,6 +8986,7 @@ function batangStatus(x) {
 
 /** Keterangan kepala halaman (dipakai kepala aplikasi di komputer, seperti Monitor SPPG). */
 function kepalaLayar2(layar) {
+  if (layar === 'redaksi') return { sub: 'Kalimat baku dan templat WA untuk LENSA PK dan Monitor SPPG. Ubah sekali, berlaku di semua pesan yang memakainya.', impor: false };
   if (layar === 'data') return { sub: 'Data tersimpan di perangkat ini' + (sinkronAktif() ? ' dan bersinkron dengan spreadsheet LENSA PK milik Anda.' : '.') + ' Kode aplikasi publik, data tidak.', impor: false };
   if (layar === 'akses') return { sub: 'Siapa saja yang memakai LENSA PK, Monitor SPPG, dan MyTagihan Desa, di perangkat apa. Perlu sinyal.', impor: false };
   var d = S.data;
@@ -8249,6 +9116,7 @@ function renderLayar2() {
 }
 /** Dipanggil aplikasi setiap selesai render bila layar aktif milik LENSA 2.0. */
 function pasangLayar2(wadah, layar) {
+  if (layar === 'redaksi') { pasangRedaksi(wadah); return; } // modul Pesan WA (kit LENSA Suite), wadah Shadow DOM sendiri
   if (!INDUK) {
     INDUK = document.createElement('div');
     INDUK.className = 'layar2';
@@ -8623,6 +9491,34 @@ function pasangPeristiwaAkses() {
   });
 }
 
+/* === 63-redaksi.js === */
+/* ----------------------------------------------------------------------
+ *  LENSA 2.4 · layar Pustaka Redaksi WA = modul Pesan WA dari kit LENSA Suite (Tahap 1).
+ *  Pustaka = tab REDAKSI (sinkron biasa). Simpan = apiSimpanRedaksi di perangkat + antrean sinkron;
+ *  server hanya menerima dari perangkat Pemilik. Monitor SPPG menerima salinannya lewat jembatan (±5 menit).
+ * ---------------------------------------------------------------------- */
+var REDAKSI_UI = { buka: '' };
+
+function pasangRedaksi(wadah) {
+  var d = S.data || {};
+  KitModul.pasang(RESEP_APP, 'pesan-wa', wadah, {
+    app: 'LENSA', judul: false, semuaTingkat: true, buka: REDAKSI_UI.buka, petugas: d.petugas || '', kantor: d.kantor || 'KC Pamekasan', kabar: kabar,
+    pustaka: function () { var b = barisRedaksi_(); return b.length ? b : KitRedaksi.bawaan(); },
+    bolehUbah: function () { return !hakLihat() && (pemilikPerangkat() || !terdaftar()); },
+    simpan: simpanRedaksi
+  });
+  REDAKSI_UI.buka = '';
+}
+
+async function simpanRedaksi(o) {
+  if (!o.id) o.id = 'R' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase(); // id sama di perangkat & spreadsheet
+  var h = jalankan('apiSimpanRedaksi', [o]);
+  await simpanSekarang();
+  if (sinkronAktif()) jadwalSinkron(300);
+  segarkanAplikasi();
+  return h;
+}
+
 /* === hp/90-gsr.js === */
 /* ----------------------------------------------------------------------
  *  Tampilan HP LENSA (app.html yang sama dengan aplikasi Apps Script) di atas mesin perangkat.
@@ -8648,7 +9544,7 @@ function segarkanTampilan() {
   var app = window.__lensaApp;
   if (!app) return;
   var a = document.activeElement;
-  if ((a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) || (app.sibuk && app.sibuk())) {
+  if ((a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) || (app.sibuk && app.sibuk()) || ModulPesanWa.sibuk()) {
     if (!HP.tunggu) { HP.tunggu = true; setTimeout(function () { HP.tunggu = false; segarkanTampilan(); }, 5000); }
     return;
   }
@@ -8716,7 +9612,8 @@ window.__lensa2 = {
   },
   daftarAntrean: function () { return APP.antreanWa || []; },
   urlMonitor: function () { return (APP.pengaturan && APP.pengaturan.urlMonitor) || '../monitor-sppg/'; },
-  hapusAntrean: function (i) { (APP.antreanWa || []).splice(i, 1); simpanNanti(); }
+  hapusAntrean: function (i) { (APP.antreanWa || []).splice(i, 1); simpanNanti(); },
+  bukaRedaksi: function (id) { REDAKSI_UI.buka = id || ''; }
 };
 
 async function siapkanHp() {
@@ -8816,16 +9713,25 @@ function noWa(no) { var s = String(no || '').replace(/\D/g, ''); if (!s) return 
 function salamSekarang() { var j = new Date().getHours(); return j < 11 ? 'Selamat pagi' : j < 15 ? 'Selamat siang' : j < 18 ? 'Selamat sore' : 'Selamat malam'; }
 function isiSalam(t) { return String(t || '').replace(/\{salam\}/g, salamSekarang()); }
 function urlWa(no, pesan) { var n = noWa(no); return n ? 'https://api.whatsapp.com/send?phone=' + n + (pesan ? '&text=' + encodeURIComponent(isiSalam(pesan)) : '') : ''; }
-var TEMPLAT_BAWAAN = {
-  sapa: "Assalamu'alaikum Warahmatullahi Wabarakatuh.\n{salam} {sapaan}, semoga selalu dalam keadaan sehat. 🙏\n\nPerkenalkan, saya {petugas} dari BPJS Ketenagakerjaan {kantor} 👋, izin menghubungi terkait kepesertaan {pk}.",
-  rincian: "Assalamu'alaikum Warahmatullahi Wabarakatuh.\n{salam} {sapaan}, semoga selalu dalam keadaan sehat. 🙏\n\nBerikut kami sampaikan rincian tagihan iuran BPJS Ketenagakerjaan per {tanggal}: 📋\n\n{rincian}\n\nℹ️ {catatan}\n\n" +
-    "Jika Bapak/Ibu sudah melakukan pembayaran, mohon abaikan pesan ini. Apabila ada kendala terkait kode iuran (billing), silakan menghubungi saya kembali. Terima kasih banyak. 🙏😊\n\nHormat saya,\n{petugas}\nBPJS Ketenagakerjaan {kantor}"
-};
-function templat(kunci, isi) {
-  var d = S.data, t = (d.templat && d.templat[kunci]) || TEMPLAT_BAWAAN[kunci];
-  isi = isi || {};
-  isi.petugas = isi.petugas || d.petugas || 'Petugas pembina'; isi.kantor = isi.kantor !== undefined ? isi.kantor : (d.kantor || '');
-  return String(t).replace(/\{(\w+)\}/g, function (m, k) { return k === 'salam' ? m : isi[k] !== undefined ? isi[k] : m; });
+/* ---------- Pustaka Redaksi WA (LENSA 2.4 · LENSA Suite Tahap 1) ----------
+   Semua pesan disusun oleh penyusun bersama (kit/redaksi.js, window.KitRedaksi) dari pustaka tab REDAKSI:
+   kalimat baku + templat bertingkat (Umum → LENSA → templat). Pesan sama persis dengan Monitor SPPG. */
+var KR = window.KitRedaksi, _PUS = { dari: null, p: null };
+function pustaka() {
+  var b = S.data && S.data.redaksi;
+  if (_PUS.dari !== b) { _PUS.dari = b; _PUS.p = KR.pustaka(b && b.length ? b : KR.bawaan()); }
+  return _PUS.p;
+}
+function nilaiDasar(k) {
+  var d = S.data || {};
+  return { sapaan: KR.sapaan(k && k.sapaan, k && k.nama), nama_pic: (k && k.nama) || '', petugas: d.petugas || 'Petugas BPJS Ketenagakerjaan', kantor: d.kantor || '',
+    tanggal: KR.tanggalPanjang(d.hariIni), batas_hari: String(d.batasHari || '') };
+}
+/** Pesan dari templat ber-kunci (alur otomatis). {salam} dibiarkan: diisi saat tombol WA diketuk. */
+function pesanKunci(kunci, k, nilai) {
+  var p = pustaka(), t = KR.templatKunci(p, 'LENSA', kunci), n = nilaiDasar(k);
+  Object.keys(nilai || {}).forEach(function (x) { n[x] = nilai[x]; });
+  return KR.susun(t, { pustaka: p, app: 'LENSA', nilai: n });
 }
 function namaLap(s) { return String(s || '').split(/[,;]+/).map(function (x) { return x.replace(/\s+/g, ' ').trim(); }).filter(Boolean); }
 function urlTel(no) { var s = String(no || '').replace(/[^\d+]/g, ''); return s ? 'tel:' + s : ''; }
@@ -8836,7 +9742,7 @@ function urlPeta(p) {
 }
 function urlArah(p) { return p.lat && p.lng ? 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + p.lat + ',' + p.lng : urlPeta(p); }
 function pesanUmum(k, p) {
-  return templat('sapa', { sapaan: k.sapaan || 'Bapak/Ibu', pk: p.namaResmi }).replace(/\s+$/, '') + '\n\n';
+  return pesanKunci('perkenalan', k, { nama_subjek: p.namaResmi, npp: p.npp }).replace(/\s+$/, '') + '\n\n';
 }
 function panggil(nama) {
   var args = Array.prototype.slice.call(arguments, 1);
@@ -9045,21 +9951,11 @@ function rincian(p) {
     dendaLalu: dl > 0 ? dl : 0, dendaLaluKet: dl > 0 ? String(p.dendaLaluKet || '') : '' };
 }
 function labelDendaLalu(r) { return 'Denda periode lalu' + (r.dendaLaluKet ? ' (' + r.dendaLaluKet + ')' : ''); }
-function teksRincian(p, r) {
-  var L = [((S.data.templat && S.data.templat.tanda) || '📌') + ' *' + p.namaResmi + '*', 'NPP/Div: ' + p.npp + ' / ' + (p.div || '000') + ' · Periode ' + r.periode];
-  r.rows.forEach(function (x, i) {
-    L.push((i + 1) + ') ' + x.periode + ': Rp ' + ang(x.tagihan) + (x.denda ? ' + denda Rp ' + ang(x.denda) + ' (2% × ' + Math.min(x.umur, 12) + ')' : ''));
-  });
-  if (r.rows.length) {
-    L.push('Total iuran: Rp ' + ang(r.total.piutang));
-    if (r.dendaOn) L.push('Total denda: Rp ' + ang(r.total.dendaPiutang));
-  }
-  if (r.dendaLalu) L.push(labelDendaLalu(r) + ': Rp ' + ang(r.dendaLalu));
-  if (r.ibr) L.push('Sisa iuran belum rinci (IBR): − Rp ' + ang(r.ibr));
-  L.push('💰 *Total tagihan: Rp ' + ang(r.totalTagihan) + '*' + (r.lebih ? ' (saldo IBR lebih Rp ' + ang(r.lebih) + ')' : ''));
-  if (kodeIuran(p)) L.push('🔑 Kode iuran: *' + kodeIuran(p) + '*');
-  return L.join('\n');
+function subjekRincian(daftar) {
+  return daftar.map(function (x) { return { nama: x.p.namaResmi, npp: x.p.npp, div: x.p.div, kode: kodeIuran(x.p), r: x.r }; });
 }
+function tandaDaftar() { return (S.data.templat && S.data.templat.tanda) || '📌'; }
+function teksRincian(p, r) { return KR.teksRincianSubjek(subjekRincian([{ p: p, r: r }])[0], tandaDaftar()); }
 /* Kode iuran Penerima Upah: 12 angka = 4 + NPP + 000 (semua DIV di cabang 000). NPP berhuruf: isian manual di Kartu PK. */
 var URL_KANAL_BAYAR = 'https://www.bpjsketenagakerjaan.go.id/kanal-pembayaran.html';
 var URL_CARA_BAYAR = 'https://bit.ly/bayar-iuran-bpjstk'; // tutorial: hibahtiar.github.io/jaga-pekerja/simulasi.html#bayar-iuran
@@ -9079,20 +9975,14 @@ function salinCadangan(t) {
   a.select(); try { a.setSelectionRange(0, t.length); document.execCommand('copy'); } catch (x) { /* abaikan */ }
   a.blur(); document.body.removeChild(a); setTimeout(kembaliKiri, 60);
 }
-/** Penutup cara bayar di setiap pesan tagihan / pengingat iuran. adaKode = ada kode iuran di pesan. */
-function teksKanalBayar(adaKode) {
-  return (adaKode === false ? '' : '📖 Cara bayar iuran dengan kode iuran di atas: ' + URL_CARA_BAYAR + '\n') +
-    '💻 Bagi Bapak/Ibu yang sudah memiliki akun SIPP, tagihan iuran juga dapat dibentuk secara mandiri melalui menu *Mutasi Data*. Panduan SIPP: ' + URL_TUTORIAL_SIPP;
+function nilaiTagihan(daftar) {
+  var total = 0;
+  daftar.forEach(function (x) { total += x.r.totalTagihan; });
+  return { rincian: KR.blokRincian(subjekRincian(daftar), tandaDaftar()), catatan_rincian: KR.catatanRincian(daftar.some(function (x) { return !x.r.dendaOn; })),
+    total: 'Rp ' + ang(total), ada_kode: daftar.some(function (x) { return kodeIuran(x.p); }), nama_subjek: gabungNama(daftar.map(function (x) { return x.p.namaResmi; })),
+    npp: daftar.map(function (x) { return x.p.npp; }).join(', '), kode_iuran: daftar.map(function (x) { return kodeIuran(x.p); }).filter(Boolean).join('\n') };
 }
-function pesanRincian(k, daftar) {
-  var d = S.data, L = [], total = 0;
-  daftar.forEach(function (x, i) { if (i) L.push(''); L.push(teksRincian(x.p, x.r)); total += x.r.totalTagihan; });
-  if (daftar.length > 1) { L.push(''); L.push('💰 *Total semua: Rp ' + ang(total) + '*'); }
-  L.push(''); L.push(teksKanalBayar(daftar.some(function (x) { return kodeIuran(x.p); })));
-  var catatan = 'Dihitung dari iuran bulan terakhir; perubahan upah atau mutasi TK dihitung kemudian. Denda 2% per bulan keterlambatan (maks. 12 bulan)' +
-    (daftar.some(function (x) { return !x.r.dendaOn; }) ? ', tidak berlaku untuk pemberi kerja non-badan usaha' : '') + '.';
-  return templat('rincian', { sapaan: (k && k.sapaan) || 'Bapak/Ibu', tanggal: tglIndo(d.hariIni), rincian: L.join('\n'), catatan: catatan });
-}
+function pesanRincian(k, daftar) { return pesanKunci('rincian', k, nilaiTagihan(daftar)); }
 function tabelRincian(r) {
   return '<div class="tbl-wrap"><table class="rinci"><thead><tr><th>Periode</th><th>Umur</th><th>Iuran</th><th>Denda</th><th>Jumlah</th></tr></thead><tbody>' +
     r.rows.map(function (x) { return '<tr><td>' + x.periode + '</td><td>' + umurTeks(x.umur) + '</td><td>' + ang(x.tagihan) + '</td><td>' + ang(x.denda) + '</td><td>' + ang(x.jumlah) + '</td></tr>'; }).join('') +
@@ -9247,7 +10137,7 @@ function render() {
     lap.innerHTML = '<div class="tirai" data-a="tutupmenu"></div><div class="menu-pop">' +
       '<button data-a="hitung">Hitung ulang sekarang</button>' +
       (d.sppg ? '<button data-a="sinkronsppg">Sinkron dengan Monitor SPPG' + (d.sppg.terakhir ? '<span class="kecil" style="display:block;font-weight:400">terakhir ' + e(d.sppg.terakhir) + (d.sppg.galat ? ' · ada kendala' : '') + '</span>' : '') + '</button>' : '') +
-      '<button data-a="templatwa">Templat pesan WA</button>' + menuPc() +
+      '<button data-a="templatwa">Pustaka Redaksi WA</button>' + menuPc() +
       (d.urlSheet ? '<a href="' + e(d.urlSheet) + '" target="_blank" rel="noopener">Buka spreadsheet</a>' : '') +
       '<button data-a="tentang">Tentang aplikasi</button></div>';
   } else lap.innerHTML = '';
@@ -10253,7 +11143,7 @@ function renderPanel() {
   if (!p) { lap.innerHTML = ''; document.body.style.overflow = ''; return; }
   document.body.style.overflow = 'hidden';
   var f = { pk: panelPk, grup: panelGrup, rincian: panelRincian, rinciangabung: panelRincianGabung, alamat: formAlamat, kontak: formKontak, catat: formCatat, jadwalform: formJadwal, jadwal: panelJadwal,
-    kelompok: formKelompok, geomanual: formGeoManual, info: formInfo, gantikel: formGantiKelompok, orang: panelOrang, formorang: formOrang, pilihorang: panelPilihOrang, antre: panelAntre, hubungi: panelHubungi, migrasi: panelMigrasi, janji: panelJanji, saring: panelSaring, cocok: panelCocok, blast: panelBlast, templat: panelTemplat, formtemplat: formTemplat, dendalalu: formDendaLalu, tunggakan: panelTunggakan, tinjau: panelTinjau, daftarpk: panelDaftarPk }[p.j];
+    kelompok: formKelompok, geomanual: formGeoManual, info: formInfo, gantikel: formGantiKelompok, orang: panelOrang, formorang: formOrang, pilihorang: panelPilihOrang, antre: panelAntre, hubungi: panelHubungi, migrasi: panelMigrasi, janji: panelJanji, saring: panelSaring, cocok: panelCocok, blast: panelBlast, dendalalu: formDendaLalu, tunggakan: panelTunggakan, tinjau: panelTinjau, daftarpk: panelDaftarPk }[p.j];
   var h = f(p);
   var kunci = S.panel.length + ':' + p.j + (p.v || ''), lama = lap.querySelector('.panel'), sama = lama && lama.getAttribute('data-k') === kunci;
   var y = sama ? lama.scrollTop : (p._y || 0), kembali = !sama && p._kembali;
@@ -10559,18 +11449,11 @@ function panelJadwal(p) {
    Templat disimpan di tab TEMPLAT_WA (bisa diubah dari HP atau spreadsheet). Pesan dikirim per KONTAK (satu pesan untuk
    semua PK yang dipegang orang itu di grup ini), satu per satu lewat WhatsApp. Setelah kembali dari WA, LENSA bertanya
    "Sudah terkirim?"; Ya = tercatat di LOG_INTERAKSI dan kontak berikutnya disiapkan. Kemajuan diingat di HP ini. */
-var PENANDA = [['sapaan', 'Sapaan PIC'], ['pk', 'Nama PK'], ['daftar', 'Daftar PK 📌'], ['rincian', 'Rincian tagihan + kode iuran'], ['total', 'Total tagihan'],
-  ['kode_iuran', 'Kode iuran'], ['bulan', 'Bulan ini'], ['batas', 'Batas bayar'], ['tanggal', 'Tanggal hari ini'], ['tk', 'Jumlah TK'], ['program', 'Program'],
-  ['petugas', 'Nama petugas'], ['kantor', 'Kantor']];
-var KEPERLUAN = ['Tagihan', 'Pengingat', 'Undangan', 'Sosialisasi', 'Pemutakhiran data', 'Ucapan', 'Lainnya'];
-var OTOMATIS = PENANDA.map(function (x) { return x[0]; }).concat(['salam', 'npp']);
-function daftarTemplat() { return (S.data.templatWa || []).filter(function (t) { return t.aktif !== 'Tidak'; }); }
-function templatDari(id) { return (S.data.templatWa || []).filter(function (t) { return t.id === id; })[0] || null; }
-function isianTemplat(isi) {
-  var m = {}, out = [];
-  String(isi || '').replace(/\{(\w+)\}/g, function (x, k) { if (OTOMATIS.indexOf(k) < 0 && !m[k]) { m[k] = 1; out.push(k); } return x; });
-  return out;
-}
+var KEPERLUAN = KR.KEPERLUAN;
+function bentukTemplat(t) { return { id: t.id, nama: t.nama, keperluan: t.keperluan, sasaran: t.sasaran, isi: t.isi, aktif: t.aktif, dipakai: t.dipakai, terakhir: t.terakhir_dipakai, kunci: t.kunci, tingkat: t.tingkat }; }
+function daftarTemplat() { return KR.daftarTemplat(pustaka(), 'LENSA').filter(function (t) { return t.keperluan !== 'Laporan grup'; }).map(bentukTemplat); }
+function templatDari(id) { var t = KR.templatId(pustaka(), id); return t ? bentukTemplat(t) : null; }
+function isianTemplat(isi) { return KR.isian(isi, 'LENSA'); }
 function labelIsian(k) { var t = String(k).replace(/_/g, ' '); return t.charAt(0).toUpperCase() + t.slice(1); }
 function butuhTagihan(t) { return !!t && /\{(rincian|total)\}/.test(t.isi || ''); }
 function gabungNama(xs) { return xs.length <= 1 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' dan ' + xs[xs.length - 1]; }
@@ -10588,30 +11471,23 @@ function kontakBlast(npps) {
   urut.sort(function (a, b) { return a.k.nama < b.k.nama ? -1 : 1; });
   return { kontak: urut, tanpa: tanpa };
 }
-function teksBlokRincian(daftar) {
-  var L = [], total = 0;
-  daftar.forEach(function (x, i) { if (i) L.push(''); L.push(teksRincian(x.p, x.r)); total += x.r.totalTagihan; });
-  if (daftar.length > 1) { L.push(''); L.push('💰 *Total semua: Rp ' + ang(total) + '*'); }
-  L.push(''); L.push(teksKanalBayar(daftar.some(function (x) { return kodeIuran(x.p); })));
-  return L.join('\n');
-}
 function tagihanKontak(c) { return c.pk.map(function (p) { return { p: p, r: rincian(p) }; }).filter(function (z) { return z.r; }); }
 function isiPesanBlast(t, c, isian) {
-  var d = S.data, h = d.hariIniData || {}, tagih = tagihanKontak(c), tanda = (d.templat && d.templat.tanda) || '📌';
-  var tagihIuran = /tagih|pengingat|iuran|bayar/i.test((t.keperluan || '') + ' ' + (t.nama || ''));
-  var bln = BULAN[+String(h.bulan || d.hariIni).slice(5, 7) - 1] || BULAN[new Date().getMonth()];
-  var kode = c.pk.map(function (p) { return kodeIuran(p) ? (c.pk.length > 1 ? p.namaResmi + ': ' : '') + kodeIuran(p) : ''; }).filter(Boolean);
-  var progs = {}; c.pk.forEach(function (p) { progs[kodeProgram(p)] = 1; });
-  var nilai = { sapaan: c.k.sapaan || 'Bapak/Ibu', pk: gabungNama(c.pk.map(function (p) { return p.namaResmi; })), npp: c.pk.map(function (p) { return p.npp; }).join(', '),
-    daftar: c.pk.map(function (p) { return tanda + ' ' + p.namaResmi + (tagihIuran && kodeIuran(p) ? '\n   Kode iuran: ' + kodeIuran(p) : ''); }).join('\n') +
-      (tagihIuran && String(t.isi || '').indexOf('{rincian}') < 0 ? '\n\n' + teksKanalBayar(c.pk.some(function (p) { return kodeIuran(p); })) : ''),
-    rincian: tagih.length ? teksBlokRincian(tagih) : 'Tidak ada tagihan: iuran sudah terbayar sampai bulan ini. 🎉',
-    total: 'Rp ' + ang(tagih.reduce(function (a, z) { return a + z.r.totalTagihan; }, 0)), kode_iuran: kode.join('\n'),
-    bulan: bln + ' ' + String(h.bulan || d.hariIni).slice(0, 4), batas: h.batasTgl ? tglIndo(h.batasTgl) : '', tanggal: tglIndo(d.hariIni),
-    tk: angkaTk(c.pk.reduce(function (a, p) { return a + (+p.tk || 0); }, 0)), program: Object.keys(progs).join('/'),
-    petugas: d.petugas || 'Petugas pembina', kantor: d.kantor || '' };
-  Object.keys(isian || {}).forEach(function (k) { if (String(isian[k]).trim()) nilai[k] = String(isian[k]).trim(); });
-  return String(t.isi || '').replace(/\{(\w+)\}/g, function (m, k) { return k === 'salam' ? m : nilai[k] !== undefined ? nilai[k] : m; });
+  var d = S.data, h = d.hariIniData || {}, tagih = tagihanKontak(c), tanda = tandaDaftar();
+  var iuran = /^(Tagihan|Pengingat)$/.test(t.keperluan || '') || /tagih|pengingat|iuran|bayar/i.test((t.keperluan || '') + ' ' + (t.nama || ''));
+  var blth = String(h.bulan || d.hariIni).slice(0, 7), progs = {};
+  c.pk.forEach(function (p) { progs[kodeProgram(p)] = 1; });
+  var n = nilaiDasar(c.k), x = tagih.length ? nilaiTagihan(tagih) : { rincian: 'Tidak ada tagihan: iuran sudah terbayar sampai bulan ini. 🎉', catatan_rincian: '', total: 'Rp ' + ang(0) };
+  Object.keys(x).forEach(function (k) { n[k] = x[k]; });
+  n.nama_subjek = gabungNama(c.pk.map(function (p) { return p.namaResmi; }));
+  n.npp = c.pk.map(function (p) { return p.npp; }).join(', ');
+  n.kode_iuran = c.pk.map(function (p) { return kodeIuran(p) ? (c.pk.length > 1 ? p.namaResmi + ': ' : '') + kodeIuran(p) : ''; }).filter(Boolean).join('\n');
+  n.ada_kode = c.pk.some(function (p) { return kodeIuran(p); });
+  n.daftar = KR.daftarSubjek(c.pk.map(function (p) { return { nama: p.namaResmi, kode: iuran ? kodeIuran(p) : '' }; }), tanda);
+  n.bulan = KR.bulanTahun(blth); n.bulan_lalu = KR.bulanTahun(KR.bulanGeser(blth, -1));
+  n.batas = h.batasTgl ? KR.tanggalPanjang(h.batasTgl) : '';
+  n.tk = angkaTk(c.pk.reduce(function (a, p) { return a + (+p.tk || 0); }, 0)); n.program = Object.keys(progs).join('/');
+  return KR.susun(t, { pustaka: pustaka(), app: 'LENSA', nilai: n, isian: isian || {} });
 }
 /* Kemajuan kirim beruntun (per templat + daftar PK + isian), disimpan 45 hari di HP ini. */
 function hashTeks(t) { var h = 0; t = String(t); for (var i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
@@ -10662,7 +11538,7 @@ function panelBlast(p) {
           (x.sasaran ? '<div class="kecil">Cocok untuk: ' + e(x.sasaran) + '</div>' : '') + '<div class="cuplik">' + e(cuplik) + '</div></button>';
       }).join('') : '<div class="kartu kosong">' + (ts.length ? 'Tidak ada templat untuk keperluan ini.' : 'Belum ada templat. Ketuk <b>Templat baru</b>, atau muat ulang bila skrip baru saja diperbarui.') + '</div>') + tanpa;
     return { judul: 'Pesan massal', sub: sub, isi: out,
-      bawah: '<button class="btn" data-a="kelolatemplat">Kelola templat</button><button class="btn utama" data-a="templatbaru">' + IKON.tambah + ' Templat baru</button>' };
+      bawah: '<button class="btn" data-a="kelolatemplat">Pustaka Redaksi</button><button class="btn utama" data-a="templatbaru">' + IKON.tambah + ' Templat baru</button>' };
   }
   var isian = isianTemplat(t.isi), contoh = kb.kontak[0];
   p.isian = p.isian || {};
@@ -10722,37 +11598,15 @@ function tandaiBlast(p, id, on) {
     toast(lanjut ? 'Tercatat. Berikutnya: ' + lanjut.k.nama : 'Semua kontak sudah dikirimi pesan 🎉');
   } else toast('Tanda terkirim dibatalkan (catatan di LOG_INTERAKSI tetap ada)');
 }
-/* Kelola templat: daftar semua templat aktif. */
-function panelTemplat() {
-  var ts = daftarTemplat();
-  return { judul: 'Templat pesan WA', sub: ts.length + ' templat', isi: '<p class="kecil" style="margin:0 4px 10px">Templat juga bisa diubah di tab TEMPLAT_WA di spreadsheet. Penanda seperti {sapaan} dan {pk} diisi otomatis per kontak.</p>' +
-    (ts.length ? '<div>' + ts.map(function (x) {
-      return '<button class="kartu-templat" data-a="ubahtemplat" data-v="' + e(x.id) + '"><span class="t1">' + e(x.nama) + '</span> <span class="pill s-belum" style="font-size:11px">' + e(x.keperluan || 'Lainnya') + '</span>' +
-        (x.sasaran ? '<div class="kecil">Cocok untuk: ' + e(x.sasaran) + '</div>' : '') + '<div class="kecil">Dipakai ' + (+x.dipakai || 0) + ' kali' + (x.terakhir ? ' · terakhir ' + e(tglIndo(x.terakhir)) : '') + '</div></button>';
-    }).join('') + '</div>' : '<div class="kartu kosong">Belum ada templat.</div>'),
-    bawah: '<button class="btn utama" data-a="templatbaru">' + IKON.tambah + ' Templat baru</button>' };
-}
-function formTemplat(p) {
-  var t = p.v ? templatDari(p.v) || {} : {};
-  if (p.nama === undefined) { p.nama = t.nama || ''; p.keperluan = t.keperluan || 'Lainnya'; p.sasaran = t.sasaran || ''; p.isi = t.isi || "Assalamu'alaikum Warahmatullahi Wabarakatuh.\n{salam} {sapaan}, semoga selalu dalam keadaan sehat. 🙏\n\n\n\nHormat saya,\n{petugas}\nBPJS Ketenagakerjaan {kantor}"; }
-  var isian = isianTemplat(p.isi);
-  return { judul: p.v ? 'Ubah templat' : 'Templat baru', sub: p.v ? t.nama : '', isi: '<div class="kartu">' +
-    '<label class="f" for="tnama" style="margin-top:0">Nama templat</label><input class="inp" id="tnama" value="' + e(p.nama) + '" placeholder="Mis. Undangan Customer Gathering">' +
-    '<label class="f">Keperluan</label><div class="pilihan">' + KEPERLUAN.map(function (k) { return '<button class="chip' + (p.keperluan === k ? ' on' : '') + '" data-a="tkeperluan" data-v="' + e(k) + '">' + e(k) + '</button>'; }).join('') + '</div>' +
-    '<label class="f" for="tsasaran">Cocok untuk (catatan, boleh kosong)</label><input class="inp" id="tsasaran" value="' + e(p.sasaran) + '" placeholder="Mis. PK 2P badan usaha, ekosistem desa">' +
-    '<label class="f" for="tisi">Isi pesan</label><textarea class="inp isi-templat" id="tisi">' + e(p.isi) + '</textarea>' +
-    '<div class="kecil" style="margin-top:8px">Ketuk untuk menyisipkan penanda (diisi otomatis per kontak):</div><div class="penanda">' +
-    PENANDA.map(function (x) { return '<button data-a="sisip" data-v="' + e(x[0]) + '" aria-label="Sisipkan ' + e(x[1]) + '">{' + e(x[0]) + '}</button>'; }).join('') + '</div>' +
-    '<p class="kecil" style="margin:10px 0 0">{salam} = Selamat pagi/siang/sore/malam sesuai jam kirim. Penanda buatan sendiri, mis. <b>{acara}</b>, <b>{tempat}</b>, ditanyakan sekali saat mengirim.' +
-    (isian.length ? ' Isian di templat ini: ' + e(isian.map(function (k) { return '{' + k + '}'; }).join(', ')) + '.' : '') + '</p></div>',
-    bawah: (p.v ? '<button class="btn bahaya" data-a="hapustemplat">Hapus</button>' : '<button class="btn" data-a="tutup">Batal</button>') + '<button class="btn utama" data-a="simpantemplat">Simpan</button>' };
-}
 function ambilIsianBlast(p) {
   p.isian = p.isian || {};
   Array.prototype.forEach.call(document.querySelectorAll('.panel .isian-blast'), function (el) { p.isian[el.getAttribute('data-k')] = el.value; });
 }
-function ambilFormTemplat(p) {
-  ['nama', 'sasaran', 'isi'].forEach(function (k) { var el = document.getElementById(k === 'nama' ? 'tnama' : k === 'sasaran' ? 'tsasaran' : 'tisi'); if (el) p[k] = el.value; });
+/* Templat diubah di layar Pustaka Redaksi WA (modul Pesan WA, satu pustaka untuk LENSA & Monitor). id '+' = templat baru. */
+function bukaPustaka(id) {
+  S.panel = []; S.menu = false;
+  if (window.__lensa2 && window.__lensa2.bukaRedaksi) window.__lensa2.bukaRedaksi(id || '');
+  pindahLayar('redaksi', true);
 }
 
 /* ---------- formulir ---------- */
@@ -10824,7 +11678,7 @@ function orangDari(id) {
 function panelOrang(p) {
   var o = orangDari(p.v), pks = pkOrang(p.v), hk = kontakHariIni(p.v);
   var tung = pks.reduce(function (s, x) { return s + (x.tunggakan || 0); }, 0), nRinci = pks.filter(function (x) { return rincian(x); }).length;
-  var pesan = "Assalamu'alaikum. {salam}, " + (o.sapaan || 'Bapak/Ibu') + '. Semoga selalu sehat dan lancar segala urusannya.';
+  var pesan = pesanKunci('sapa_singkat', o, {});
   var wa = o.wa ? urlWa(o.wa, pesan) : '';
   var out = '<div class="kartu kepala-pk"><h2>' + e(o.nama) + '</h2><div class="kecil">' + e([o.jabatan, o.hp].filter(Boolean).join(' · ') || 'Belum ada nomor') + '</div>' +
     '<div class="kecil">Sapaan di WA: <b>' + e(o.sapaan || 'Bapak/Ibu') + '</b></div>' +
@@ -11361,41 +12215,10 @@ var AKSI = {
     if (!yakin(btn, 'Ketuk lagi: hapus tanda terkirim')) return;
     var m = bacaKampanye(); delete m[kunciKampanye(p)]; lsTulis('lensa_pk_kampanye', m); renderPanel(); toast('Tanda terkirim dihapus. Catatan di LOG_INTERAKSI tetap ada.');
   },
-  kelolatemplat: function () { buka({ j: 'templat' }); },
-  templatwa: function () { S.menu = false; render(); buka({ j: 'templat' }); },
-  templatbaru: function () { buka({ j: 'formtemplat', v: '' }); },
-  ubahtemplat: function (v) { buka({ j: 'formtemplat', v: v }); },
-  tkeperluan: function (v) { var p = S.panel[S.panel.length - 1]; ambilFormTemplat(p); p.keperluan = v; renderPanel(); },
-  sisip: function (v) {
-    var a = document.getElementById('tisi'); if (!a) return;
-    var t = '{' + v + '}', i = typeof a.selectionStart === 'number' ? a.selectionStart : a.value.length, j = typeof a.selectionEnd === 'number' ? a.selectionEnd : i;
-    a.value = a.value.slice(0, i) + t + a.value.slice(j);
-    try { a.focus({ preventScroll: true }); a.setSelectionRange(i + t.length, i + t.length); } catch (x) { /* abaikan */ }
-    var p = S.panel[S.panel.length - 1]; if (p) p.isi = a.value;
-  },
-  simpantemplat: function (v, btn) {
-    var p = S.panel[S.panel.length - 1]; ambilFormTemplat(p);
-    if (!String(p.nama).trim()) return toast('Nama templat belum diisi', true);
-    if (!String(p.isi).trim()) return toast('Isi pesan belum diisi', true);
-    sibuk(btn, true);
-    panggil('apiSimpanTemplat', { id: p.v || '', nama: p.nama.trim(), keperluan: p.keperluan, sasaran: String(p.sasaran || '').trim(), isi: p.isi.replace(/\s+$/, '') }).then(function (h) {
-      S.data.templatWa = h.templat || S.data.templatWa; simpanCache(); tutup();
-      var pb = S.panel[S.panel.length - 1];
-      if (pb && pb.j === 'blast') { pb.idT = h.id; pb.langkah = 'isi'; renderPanel(); }
-      toast('Templat disimpan');
-    }).catch(function (er) { sibuk(btn, false); toast(er.message, true); });
-  },
-  hapustemplat: function (v, btn) {
-    var p = S.panel[S.panel.length - 1];
-    if (!yakin(btn, 'Ketuk lagi untuk menghapus')) return;
-    sibuk(btn, true);
-    panggil('apiHapusTemplat', p.v).then(function (h) {
-      S.data.templatWa = h.templat || S.data.templatWa; simpanCache(); tutup();
-      var pb = S.panel[S.panel.length - 1];
-      if (pb && pb.j === 'blast' && pb.idT === p.v) { pb.idT = ''; pb.langkah = 'templat'; renderPanel(); }
-      toast('Templat dihapus (masih tersimpan di spreadsheet dengan aktif = Tidak)');
-    }).catch(function (er) { sibuk(btn, false); toast(er.message, true); });
-  },
+  kelolatemplat: function () { bukaPustaka(''); },
+  templatwa: function () { bukaPustaka(''); },
+  templatbaru: function () { bukaPustaka('+'); },
+  ubahtemplat: function (v) { bukaPustaka(v); },
 
   waya: function () {
     var q = S.tanyaWa;
@@ -11589,7 +12412,7 @@ var IKON_APP = {
  *  - Antrean WA berurutan: "Ya, lanjut" mencatat lalu langsung membuka WA kontak berikutnya;
  *    di komputer satu tab WhatsApp dipakai ulang; Enter = sudah terkirim & lanjut, Esc = belum.
  * ====================================================================== */
-var JUDUL_LAYAR = { hari: 'Hari ini', pk: 'Perusahaan', grup: 'Grup', jadwal: 'Jadwal', dasbor: 'Dasbor', antrean: 'Antrean WA', data: 'Data & pengaturan', akses: 'Perangkat & pengguna' };
+var JUDUL_LAYAR = { hari: 'Hari ini', pk: 'Perusahaan', grup: 'Grup', jadwal: 'Jadwal', dasbor: 'Dasbor', antrean: 'Antrean WA', data: 'Data & pengaturan', akses: 'Perangkat & pengguna', redaksi: 'Pustaka Redaksi WA' };
 /** Di komputer judul dasbor sama gayanya dengan Monitor SPPG ("Kepatuhan iuran …"). */
 function judulLayar(v) { return v === 'dasbor' && lebar() ? 'Kepatuhan iuran binaan' : JUDUL_LAYAR[v]; }
 var IKON_PC = {
@@ -11599,6 +12422,7 @@ var IKON_PC = {
   monitor: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M7 12l3-3 2 2 4-4"/></svg>',
   luar: '<svg class="luar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
   unggah: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg>',
+  redaksi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v5h5M8 13h8M8 17h5"/></svg>',
   akses: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="13" height="10" rx="1.5"/><path d="M6 18h5M8.5 14v4"/><rect x="16" y="8" width="6" height="12" rx="1.5"/><path d="M18.5 17h1"/></svg>'
 };
 function lebar() { return window.matchMedia && window.matchMedia('(min-width: 760px)').matches; }
@@ -11607,7 +12431,7 @@ function sentuhan() { return ('ontouchstart' in window) || navigator.maxTouchPoi
 /* ---------- navigasi ---------- */
 function navPc() {
   var item = [['dasbor', 'Dasbor', 1], ['hari', 'Hari ini'], ['pk', 'Perusahaan'], ['grup', 'Grup'], ['jadwal', 'Jadwal'], ['antrean', 'Antrean WA', 1], ['data', 'Data & pengaturan', 1]];
-  if (window.__lensa2 && window.__lensa2.pemilik()) item.push(['akses', 'Perangkat', 1]);
+  if (window.__lensa2 && window.__lensa2.pemilik()) item.splice(6, 0, ['redaksi', 'Redaksi WA', 1]), item.push(['akses', 'Perangkat', 1]); // Pusat Kendali: hanya Pemilik
   return '<nav class="bawah"><div class="merek-lebar"><img class="merek-logo" src="' + IKON_APP.lensa + '" alt=""><b>LENSA PK<span class="merek-master">MASTER</span></b><span>Layanan Evaluasi &amp; Analisa Pemberi Kerja · KC Pamekasan</span></div><div class="dalam">' +
     item.map(function (x) {
       return '<button data-a="layar" data-v="' + x[0] + '" class="' + (S.layar === x[0] ? 'aktif' : '') + (x[2] ? ' hanya-lebar' : '') + '">' + (IKON[x[0]] || IKON_PC[x[0]]) + '<span>' + e(x[1]) + '</span></button>';
@@ -11620,7 +12444,7 @@ function tautanApp(url, ikon, nama) {
 function urlMonitor() { return window.__lensa2 ? window.__lensa2.urlMonitor() : '../monitor-sppg/'; }
 function menuPc() {
   var st = window.__lensa2 ? window.__lensa2.teksStatus() : '';
-  return '<a class="menu-app" href="' + e(urlMonitor()) + '" target="_blank" rel="noopener"><img class="ikon-app" src="' + IKON_APP.sppg + '" alt="">Buka Monitor SPPG ↗</a><a class="menu-app" href="' + URL_MYTAGIHAN + '" target="_blank" rel="noopener"><img class="ikon-app" src="' + IKON_APP.mytagihan + '" alt="">Buka MyTagihan Desa ↗</a><button data-a="layarmenu" data-v="dasbor">Dasbor</button><button data-a="layarmenu" data-v="antrean">Antrean WA (kirim berurutan)</button>' +
+  return '<a class="menu-app" href="' + e(urlMonitor()) + '" target="_blank" rel="noopener"><img class="ikon-app" src="' + IKON_APP.sppg + '" alt="">Buka Monitor SPPG ↗</a><a class="menu-app" href="' + URL_MYTAGIHAN + '" target="_blank" rel="noopener"><img class="ikon-app" src="' + IKON_APP.mytagihan + '" alt="">Buka MyTagihan Desa ↗</a><button data-a="layarmenu" data-v="dasbor">Dasbor</button><button data-a="layarmenu" data-v="antrean">Antrean WA (kirim berurutan)</button><button data-a="layarmenu" data-v="redaksi">Pustaka Redaksi WA</button>' +
     (window.__lensa2 && window.__lensa2.aktif() ? '<button data-a="sinkron2">Sinkron sekarang<span class="kecil" style="display:block;font-weight:400">' + e(st) + '</span></button>' : '') +
     (window.__lensa2 && window.__lensa2.pemilik() ? '<button data-a="layarmenu" data-v="akses">Perangkat &amp; pengguna</button>' : '') +
     '<button data-a="layarmenu" data-v="data">Data, sinkron &amp; PIN' + (window.__lensa2 && !window.__lensa2.aktif() ? '<span class="kecil" style="display:block;font-weight:400">' + e(st) + '</span>' : '') + '</button>';
@@ -11630,6 +12454,7 @@ var LAYAR_PC = {
   dasbor: function () { return '<div id="wadah2"></div>'; },
   data: function () { return '<div id="wadah2"></div>'; },
   akses: function () { return '<div id="wadah2"></div>'; },
+  redaksi: function () { return '<div id="wadah2"></div>'; },
   antrean: layarAntrean
 };
 var layarJadwalAsli = layarJadwal;
@@ -11811,7 +12636,7 @@ window.__lensaApp = {
   layar: function (v) { S.menu = false; pindahLayar(v, true); },
   bukaPk: function (npp) { buka({ j: 'pk', v: String(npp) }); },
   bukaDaftar: function (judul, npps, sub) { if (lebar()) S.panel = []; buka({ j: 'daftarpk', judul: judul, npps: npps, sub: sub || '' }); },
-  sibuk: function () { var p = S.panel[S.panel.length - 1]; return !!p && /^(form|alamat|kontak|catat|kelompok|geomanual|info|gantikel|pilihorang|blast|saring|templat|jadwalform)/.test(p.j); },
+  sibuk: function () { var p = S.panel[S.panel.length - 1]; return !!p && /^(form|alamat|kontak|catat|kelompok|geomanual|info|gantikel|pilihorang|blast|saring|jadwalform)/.test(p.j); },
   segarkanStatus: function () { Array.prototype.forEach.call(document.querySelectorAll('.status-lebar'), function (x) { x.innerHTML = window.__lensa2 ? window.__lensa2.statusSamping() : ''; }); }
 };
 
