@@ -729,7 +729,7 @@ function gasMuatLembar(peta) {
 /* =====================================================================
  *  KitImpor — modul Impor bersama LENSA Suite (Tahap 2A).
  *  Satu pengurai laporan sistem (ITW/ITB, Monitoring, Data Badan Usaha, KPI084, KPI085, Kartu Iuran,
- *  Status PK LENSA) untuk mesin LENSA (Apps Script & perangkat), Monitor SPPG, dan Hub.
+ *  Status PK LENSA, 3C: Daftar Iuran Belum Rinci / IBR) untuk mesin LENSA (Apps Script & perangkat), Monitor SPPG, dan Hub.
  *  ES5 murni, tanpa layanan Google: jalan di Apps Script dan di browser.
  *  Laporan diurai sekali di perangkat yang mengunggah, lalu dikirim sebagai "laporan ringkas"
  *  (hanya kolom yang dipakai) ke Gudang Laporan KC.
@@ -836,6 +836,17 @@ var KitImpor = (function () {
       ['rata_kurang_lancar', 'kurang lancar ke diragukan#3', ''], ['rata_diragukan', 'diragukan ke macet#3', ''],
       ['bobot', 'bobot', ''], ['skor', 'skor', '']
     ],
+    // 3C: Daftar Iuran Belum Rinci (per pembina, satu NPP bisa beberapa baris transaksi); disimpan Gudang untuk MyTagihan Desa
+    IBR: [
+      ['npp', 'npp', 'Ya'],
+      ['div', 'div|divisi', ''],
+      ['nama', 'nama pemberi kerja badan usaha|pemberi kerja badan usaha|nama badan usaha|nama perusahaan|nama', ''],
+      ['posting_terakhir', 'posting terakhir|posting', ''],
+      ['tgl_transaksi', 'tgl transaksi|tanggal transaksi', ''],
+      ['kode_transaksi', 'kode transaksi', ''],
+      ['ijt', 'ibr jatuh tempo ijt|ibr jatuh tempo|jatuh tempo|ijt', 'Ya'],
+      ['idm', 'ibr dibayar dimuka idm|ibr dibayar dimuka|dibayar dimuka|idm', '']
+    ],
     KPI085: [
       ['npp', 'npp', 'Ya'],
       ['pembina', 'nama pembina|pembina', 'Ya'],
@@ -854,10 +865,11 @@ var KitImpor = (function () {
     KARTU_IURAN: ['no', 'blth_iuran', 'tgl_bayar', 'jht', 'jkk', 'jkm', 'jp', 'jkp', 'denda', 'total_iuran', 'total_upah', 'jumlah_tk'],
     KPI084: ['no', 'bulan', 'pk_itw', 'pk_lancar', 'pk_kurang_lancar', 'pk_diragukan', 'pk_macet', 'mig_itw', 'mig_lancar', 'mig_kurang_lancar', 'mig_diragukan',
       'cap_itw', 'cap_lancar', 'cap_kurang_lancar', 'cap_diragukan', 'rata_itw', 'rata_lancar', 'rata_kurang_lancar', 'rata_diragukan', 'bobot', 'skor'],
-    KPI085: ['no', 'pembina', 'npp', 'nama', 'kelas_lalu', 'kelas_ini', 'migrasi']
+    KPI085: ['no', 'pembina', 'npp', 'nama', 'kelas_lalu', 'kelas_ini', 'migrasi'],
+    IBR: ['no', 'npp', 'div', 'nama', 'posting_terakhir', 'tgl_transaksi', 'kode_transaksi', 'ijt', 'idm']
   };
 
-  var NAMA_LAPORAN = { DATA_BU: 'Data Badan Usaha', MONITORING: 'Monitoring', ITW_ITB: 'ITW/ITB', KARTU_IURAN: 'Kartu Iuran', KPI084: 'KPI084 Rekap Migrasi Piutang', KPI085: 'KPI085 Detil Migrasi Piutang', LENSA_STATUS: 'STATUS_PK (LENSA)' };
+  var NAMA_LAPORAN = { DATA_BU: 'Data Badan Usaha', MONITORING: 'Monitoring', ITW_ITB: 'ITW/ITB', KARTU_IURAN: 'Kartu Iuran', KPI084: 'KPI084 Rekap Migrasi Piutang', KPI085: 'KPI085 Detil Migrasi Piutang', LENSA_STATUS: 'STATUS_PK (LENSA)', IBR: 'Daftar IBR (Iuran Belum Rinci)' };
   var BULAN_SINGKAT = { jan: 1, feb: 2, mar: 3, apr: 4, mei: 5, may: 5, jun: 6, jul: 7, agu: 8, ags: 8, agt: 8, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12 };
   var BULAN_KPI = /^(jan|feb|mar|apr|mei|may|jun|jul|agu|ags|agt|aug|sep|okt|oct|nov|des|dec)[a-z]*$/;
   var TIPE_KOLOM = {
@@ -871,7 +883,8 @@ var KitImpor = (function () {
     tk_na: 'bulat', tk_jumlah: 'bulat', iuran_berjalan: 'angka', tgl_terima: 'tgl', blth_entri: 'blth', nilai_posting: 'angka',
     sipp_prs: 'sipp', ibr_ijt: 'angka', ibr_idm: 'angka',
     tgl_bayar: 'tgl', jht: 'angka', jkk: 'angka', jkm: 'angka', jp: 'angka', jkp: 'angka', denda: 'angka', total_iuran: 'angka',
-    jumlah_tk: 'bulat', kelas_lalu: 'kelas', kelas_ini: 'kelas', migrasi: 'yatidak'
+    jumlah_tk: 'bulat', kelas_lalu: 'kelas', kelas_ini: 'kelas', migrasi: 'yatidak',
+    posting_terakhir: 'blth', tgl_transaksi: 'tgl', kode_transaksi: 'kode', ijt: 'angka', idm: 'angka'
   };
   var SERING_KOSONG = { blth_na: 1, kategori: 1, keps_jp: 1, prog: 1, jkp: 1, denda: 1 };
 
@@ -1124,12 +1137,13 @@ var KitImpor = (function () {
     ['ITW_ITB', function (t) { return / koef/.test(t) && / itb /.test(t); }],
     ['ITW_ITB', function (t) { return /kecukupan ibr/.test(t) && /(blm posting|belum posting|penilaian)/.test(t); }],
     ['KARTU_IURAN', function (t) { return /blth iuran/.test(t) && /(tanggal|tgl) bayar/.test(t); }],
+    ['IBR', function (t) { return (/jatuh tempo/.test(t) && /dibayar dimuka/.test(t)) || (/kode transaksi/.test(t) && / ijt /.test(t)); }],
     ['MONITORING', function (t) { return /(penambahan|pengurangan)/.test(t) && /aktif/.test(t); }],
     ['DATA_BU', function (t) { return /(nama ilo|kode ilo|rate jkk)/.test(t); }]
   ];
   var ATURAN_FILE = [
     ['KPI084', /kpi\s*_?084/], ['KPI085', /kpi\s*_?085/], ['LENSA_STATUS', /status.?pk/], ['ITW_ITB', /itw|itb/], ['KARTU_IURAN', /kartu/],
-    ['MONITORING', /monitor/], ['DATA_BU', /badan.?usaha|dbu|data.?bu/]
+    ['MONITORING', /monitor/], ['DATA_BU', /badan.?usaha|dbu|data.?bu/], ['IBR', /ibr|belum.?rinci/]
   ];
   function dipakai(j) { return CFG.jenis.indexOf(j) >= 0; }
   function tebakJenis(teks, namaFile) {
@@ -1325,10 +1339,18 @@ var KitImpor = (function () {
     return peta;
   }
 
+  /** IBR: baris kelompok "Pembina : AB123456 - NAMA" → kode pembina untuk baris-baris di bawahnya. */
+  var POLA_PEMBINA = /pembina\s*:?\s*([A-Z]{2}\d{6})/i;
   function ambilBaris(an, peta, grid) {
-    var out = [], prev = null;
+    var out = [], prev = null, pembinaIbr = '';
+    if (an.jenis === 'IBR') for (var r0 = 0; r0 < an.mulai; r0++) { var m0 = (grid[r0] || []).join(' ').match(POLA_PEMBINA); if (m0) pembinaIbr = m0[1].toUpperCase(); }
     for (var r = an.mulai; r < grid.length; r++) {
       var row = grid[r];
+      if (an.jenis === 'IBR' && !rapikanNpp(row[peta.npp])) {
+        var mP = row.join(' ').match(POLA_PEMBINA);
+        if (mP) pembinaIbr = mP[1].toUpperCase();
+        continue; // judul kelompok, judul kolom berulang, jumlah
+      }
       var o = {};
       Object.keys(peta).forEach(function (k) {
         var x = row[peta[k]];
@@ -1350,6 +1372,7 @@ var KitImpor = (function () {
       if (npp) {
         o.npp = npp;
         o.div = rapikanDiv(o.div);
+        if (an.jenis === 'IBR' && peta.pembina === undefined) o.pembina = pembinaIbr;
         out.push(o);
         prev = o;
         continue;
@@ -1513,7 +1536,7 @@ var KitImpor = (function () {
   /* ---------------- laporan ringkas (dikirim ke Gudang) ---------------- */
 
   /** Jenis yang disimpan di Gudang Laporan KC (Kartu Iuran tetap di LENSA; Status PK hanya Monitor). */
-  var GUDANG = { ITW_ITB: true, MONITORING: true, DATA_BU: true, KPI084: true, KPI085: true };
+  var GUDANG = { ITW_ITB: true, MONITORING: true, DATA_BU: true, KPI084: true, KPI085: true, IBR: true };
   var MAKS_JUDUL_TEKS = 4000;
 
   /** Hasil urai → laporan ringkas: hanya kolom yang terbaca, nilai teks apa adanya. */
@@ -1529,6 +1552,11 @@ var KitImpor = (function () {
       posisi: !!h.an.posisi, menurutIsi: !!h.an.menurutIsi,
       judulTeks: String(h.an.judulTeks || '').slice(0, MAKS_JUDUL_TEKS), rekap: h.rekap || null
     };
+    if (lr.jenis === 'IBR') { // satu file berisi beberapa pembina: judul (pembina pertama) tidak mewakili seluruh laporan
+      var iPb = kolom.indexOf('pembina'), kode = {};
+      if (iPb >= 0) lr.baris.forEach(function (r) { if (r[iPb]) kode[r[iPb]] = true; });
+      if (Object.keys(kode).length > 1) { lr.per.pembina = ''; lr.per.namaPembina = ''; }
+    }
     lr.pembina = pembinaLaporan(lr);
     lr.sidik = sidik(lr);
     return lr;
@@ -2453,7 +2481,7 @@ var CSS_PESAN_WA = "*{box-sizing:border-box}\n.modul-wa{font:15px/1.45 system-ui
  * ==========================================================================
  */
 
-var VERSI = '1.26';
+var VERSI = '1.27';
 var TZ = 'Asia/Jakarta';
 var _HARI_INI_UJI = null; // khusus pengujian; biarkan null
 
@@ -2662,7 +2690,7 @@ var DEF_PEMETAAN = KitImpor.DEF_PEMETAAN;
 var URUTAN_KOLOM = KitImpor.URUTAN_KOLOM;
 var NAMA_LAPORAN = KitImpor.NAMA_LAPORAN;
 var JENIS_LENSA = ['DATA_BU', 'MONITORING', 'ITW_ITB', 'KARTU_IURAN', 'KPI084', 'KPI085'];
-var PRIORITAS_IMPOR = { DATA_BU: 1, MONITORING: 2, ITW_ITB: 3, KARTU_IURAN: 4, KPI084: 5, KPI085: 6 };
+var PRIORITAS_IMPOR = { DATA_BU: 1, MONITORING: 2, ITW_ITB: 3, KARTU_IURAN: 4, KPI084: 5, KPI085: 6, IBR: 7 };
 var KUNCI_USANG = ['kpi_mig_kecualikan_non_asn'];
 
 /* Templat awal pesan WA massal (tab TEMPLAT_WA). Hanya diisi bila tab masih kosong; setelah itu milik petugas. */
@@ -3484,7 +3512,7 @@ function siapkanDatabaseDiam_() {
 
 /* Pengurai laporan = modul Impor bersama (kit/impor.js). Nama fungsi lama tetap dipakai di seluruh mesin LENSA. */
 KitImpor.pasang({
-  jenis: JENIS_LENSA,
+  jenis: JENIS_LENSA.concat(['IBR']), // 1.27 (3C): Daftar IBR dikenali untuk Gudang (MyTagihan Desa); LENSA sendiri memakai IBR dari ITW/ITB
   saranPemetaan: true,
   tambahan: function () { return bacaTab_('PEMETAAN').data; },
   hariIni: function () { return hariIniStr_(); },
@@ -3542,6 +3570,13 @@ function imporLaporan_(lr, opsi) {
   try {
     var b = KitImpor.buka(lr), an = b.an, peta = b.peta, data = b.data, per = b.per;
     log.jenis = NAMA_LAPORAN[an.jenis] || an.jenis;
+    if (an.jenis === 'IBR') { // 1.27 (3C): hanya untuk Gudang → MyTagihan Desa; tab LENSA tidak berubah
+      var nNpp = {}; data.forEach(function (o) { nNpp[o.npp] = true; });
+      log.periode = per.tanggal; log.baris = data.length;
+      log.pesan = 'OK · disimpan di Gudang untuk MyTagihan Desa' + (opsi.asal ? ' · dari ' + opsi.asal : '');
+      tambahBaris_('LOG_IMPOR', [log]);
+      return { ok: true, jenis: 'IBR', ringkas: NAMA_LAPORAN.IBR + ' (' + namaFile + '): ' + data.length + ' baris, ' + Object.keys(nNpp).length + ' NPP · dikirim ke MyTagihan Desa lewat Gudang (LENSA tetap memakai IBR dari ITW/ITB)', log: log, lr: lr };
+    }
     if (JENIS_LENSA.indexOf(an.jenis) < 0) throw new Error('Jenis laporan ini tidak dipakai LENSA PK.');
     if (!data.length) throw new Error('Tidak ada baris data yang terbaca.');
     var jaga = jagaPembina_(an.jenis, per, peta, data);
@@ -8274,7 +8309,7 @@ function apiImporLaporan(daftar) {
       if (gudang) h.ringkas += ' · ' + gudang;
       return h;
     });
-    if (hasil.some(function (h) { return h.ok; })) hitungUlang_();
+    if (hasil.some(function (h) { return h.ok && h.jenis !== 'IBR'; })) hitungUlang_();
     return { ok: true, hasil: hasil.map(function (h) { return { ok: h.ok, ringkas: h.ringkas }; }) };
   } finally { lock.releaseLock(); }
 }
@@ -8730,7 +8765,7 @@ function gambarRincian(p, r) {
  *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
  *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.7.1';
+var VERSI_APP = '2.8.0';
 var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
 function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, antre: [], gagal: [], galatAntre: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
@@ -8974,7 +9009,7 @@ async function imporBerkas(files) {
   });
   // spreadsheet ikut diperbarui saat sinkron; LENSA_PK.gs ≤ 1.22 belum mengenal laporan ringkas → berkas utuh seperti dulu
   if (kirim.length) antreOp(serverLama ? 'apiImporApp' : 'apiImporLaporan', [kirim]);
-  var ok = hasil.some(function (h) { return h.ok; });
+  var ok = hasil.some(function (h) { return h.ok && h.jenis !== 'IBR'; }); // 2.8: Daftar IBR hanya untuk Gudang → MyTagihan
   if (ok) {
     var hit = hitungUlang_();
     if (hit && hit.pesan) hasil.push({ ok: true, ringkas: hit.pesan.split('\n')[0], info: true });
@@ -9748,7 +9783,7 @@ function layarData() {
       '<div class="form-sinkron" id="kartuMonitor"><label class="field">Alamat Monitor SPPG<input class="inp" data-f="urlMonitor" value="' + e((APP.pengaturan && APP.pengaturan.urlMonitor) || '../monitor-sppg/') + '" placeholder="https://<akun>.github.io/monitor-sppg/"></label>' +
       '<div class="aksi-baris"><button class="btn" data-a="simpanMonitor">Simpan</button><a class="btn" href="' + e((APP.pengaturan && APP.pengaturan.urlMonitor) || '../monitor-sppg/') + '" target="_blank" rel="noopener">Coba buka ↗</a></div>' +
       '<div class="catatan">Bawaan <b>../monitor-sppg/</b> = repo <b>monitor-sppg</b> di akun GitHub yang sama dengan LENSA PK. Ubah bila alamatnya lain.</div></div>') +
-    (hakLihat() ? '' : '<div class="lepas" data-a="pilihBerkas">' + ikon('unggah') + '<b>Impor laporan</b><p>Laporan sistem: ITW/ITB, Monitoring, Data Badan Usaha, KPI084/085, Kartu Iuran (CSV/XLSX, boleh beberapa sekaligus) — hanya baris kode pembina ' + e(P_('kode_pembina') || 'HA187580') + ' yang disimpan. Laporan juga dikirim ke spreadsheet saat sinkron.</p><button class="btn utama">Pilih file</button></div>') +
+    (hakLihat() ? '' : '<div class="lepas" data-a="pilihBerkas">' + ikon('unggah') + '<b>Impor laporan</b><p>Laporan sistem: ITW/ITB, Monitoring, Data Badan Usaha, KPI084/085, Kartu Iuran (CSV/XLSX, boleh beberapa sekaligus) — hanya baris kode pembina ' + e(P_('kode_pembina') || 'HA187580') + ' yang disimpan. Daftar IBR (Iuran Belum Rinci, .xlsx semua pembina) disimpan di Gudang dan dikirim otomatis ke MyTagihan Desa. Laporan juga dikirim ke spreadsheet saat sinkron.</p><button class="btn utama">Pilih file</button></div>') +
     (log.length ? kartu('Hasil impor', '', '<div class="daftar-hasil">' + log.map(function (x) { return '<div class="' + (x.info ? 'info' : x.ok ? 'ok' : 'gagal') + '">' + e(x.waktu) + ' · ' + (x.info ? '' : x.ok ? '✓ ' : '✗ ') + e(x.ringkas) + '</div>'; }).join('') + '</div>') : '') +
     kartu('Cadangan', 'file .json berisi seluruh data perangkat ini' + (pinAktif() ? ' (terkunci PIN yang sama)' : ''), '<div class="aksi-baris"><button class="btn" data-a="unduhCadangan">' + ikon('unduh') + 'Unduh cadangan</button><button class="btn" data-a="pilihCadangan">' + ikon('unggah') + 'Pulihkan dari cadangan</button><button class="btn bahaya" data-a="hapusSemua">Hapus semua data di perangkat ini</button></div>');
 }
@@ -10177,8 +10212,8 @@ function kartuHub() {
   if (h.galatMuat) return kartu('Pusat Kendali LENSA Suite', 'tidak bisa dimuat', '<div class="kosong" style="color:#B4442A">' + e(h.galatMuat) + '</div>', kanan);
   var isi = '';
   if (!h.adaHub) isi += '<div class="catatan" style="margin-top:0;color:#B4442A">Berkas Hub.gs belum dipasang di proyek Apps Script LENSA PK: cadangan, Gudang, dan Buku Kontak tidak tersedia.</div>';
-  else isi += blokCadangan(h.cadangan || {}) + blokLemari(h);
-  isi += blokGalat(h.galat || []);
+  else isi += blokCadangan(h.cadangan || {}) + blokLemari(h) + blokIbr(h.ibr);
+  isi += blokGalat(h.galat || [], h.catatanGalat);
   return kartu('Pusat Kendali LENSA Suite', h.adaHub ? 'Hub ' + e(h.versi) + ' · cadangan, gudang, buku kontak, galat semua aplikasi' : 'galat semua aplikasi', isi, kanan);
 }
 function blokCadangan(c) {
@@ -10213,15 +10248,27 @@ function blokLemari(h) {
   if (h.lensa) out.push('<li><b>' + tautan(h.lensa.url, 'Sheet LENSA PK') + '</b>: ' + persenSel(h.lensa.sel, batas) + ' dari batas 10 juta sel</li>');
   return '<h3 class="sub-judul">Lemari bersama</h3><ul class="daftar-lemari">' + out.join('') + '</ul>';
 }
-function blokGalat(daftar) {
-  if (!daftar.length) return '<h3 class="sub-judul">Galat terbaru</h3><div class="kosong">Belum ada galat tercatat.</div>';
+/** 2.8 (LENSA Suite 3C): Daftar IBR di Gudang → MyTagihan Desa (otomatis), dengan tombol kirim lagi. */
+function blokIbr(x) {
+  var judul = '<h3 class="sub-judul">IBR untuk MyTagihan Desa</h3>';
+  if (!x || !x.id) return judul + '<div class="catatan" style="margin-top:0">' + (x && x.status ? e(x.status) + '. ' : '') + 'Unggah <b>Daftar Iuran Belum Rinci</b> (.xlsx, semua pembina) lewat Impor laporan: disimpan sekali di Gudang, lalu saldo IJT NPP desa dikirim otomatis ke MyTagihan Desa (tercatat di Riwayat MyTagihan, bisa diurungkan).</div>';
+  var merah = x.status === 'Gagal' || x.status === 'MyTagihan belum disambungkan';
+  var ket = 'Daftar IBR ' + e(x.tanggal ? tglIndo(x.tanggal) : '') + (x.file ? ' (' + e(x.file) + ')' : '') + ' · <b' + (merah ? ' style="color:#B4442A"' : '') + '>' + e(x.status) + '</b>' +
+    (x.waktu ? ' ' + e(waktuSingkat(x.waktu)) : '') + (x.npp ? ' · ' + x.npp + ' NPP desa diperbarui' : '') +
+    (x.pesan ? '<div' + (merah ? ' style="color:#B4442A"' : '') + '>' + e(x.pesan) + '</div>' : '') +
+    (x.status === 'Gagal' && x.coba ? '<div>Dicoba lagi otomatis tiap 30 menit (percobaan ke-' + x.coba + ' dari 6).</div>' : '');
+  return judul + '<div class="catatan" style="margin-top:0">' + ket + '</div><div class="aksi-baris"><button class="btn" data-a="kirimIbr"' + (x.status === 'Menunggu' ? ' disabled' : '') + '>Kirim lagi ke MyTagihan</button></div>';
+}
+function blokGalat(daftar, catatan) {
+  var cat = catatan ? '<div class="catatan">' + e(catatan) + '</div>' : '';
+  if (!daftar.length) return '<h3 class="sub-judul">Galat terbaru</h3><div class="kosong">Belum ada galat tercatat.</div>' + cat;
   var baris = function (g) {
     return '<tr><td style="white-space:nowrap">' + e(waktuSingkat(g.waktu)) + '</td><td>' + e(g.fungsi) + '<div class="sub">' + e(g.perangkat) + (g.versi ? ' · ' + e(g.versi) : '') + '</div></td><td>' + e(g.pesan) + '</td></tr>';
   };
   var kepala = '<thead><tr><th>Waktu</th><th>Sumber · perangkat</th><th>Pesan</th></tr></thead>';
   return '<h3 class="sub-judul">Galat terbaru <span class="sub">(semua aplikasi, terbaru di atas; lengkapnya di tab GALAT Sheet LENSA)</span></h3>' +
     '<div class="tabel-wrap"><table class="tabel">' + kepala + '<tbody>' + daftar.slice(0, 5).map(baris).join('') + '</tbody></table></div>' +
-    (daftar.length > 5 ? '<details class="riwayat-cabut"><summary>' + (daftar.length - 5) + ' galat sebelumnya</summary><div class="tabel-wrap"><table class="tabel">' + kepala + '<tbody>' + daftar.slice(5).map(baris).join('') + '</tbody></table></div></details>' : '');
+    (daftar.length > 5 ? '<details class="riwayat-cabut"><summary>' + (daftar.length - 5) + ' galat sebelumnya</summary><div class="tabel-wrap"><table class="tabel">' + kepala + '<tbody>' + daftar.slice(5).map(baris).join('') + '</tbody></table></div></details>' : '') + cat;
 }
 
 /** Satu orang = nama pengguna yang sama (huruf besar/kecil & tanda baca diabaikan) di semua aplikasi. */
@@ -10274,6 +10321,10 @@ Object.assign(AKSI2, {
   muatHub: function () { muatHub(); },
   cadangkan: async function () {
     var h = await muatHub('cadangkan');
+    if (h && h.antre) kabar(h.antre); else if (h && h.galatMuat) kabar('Gagal: ' + h.galatMuat);
+  },
+  kirimIbr: async function () {
+    var h = await muatHub('kirimIbr');
     if (h && h.antre) kabar(h.antre); else if (h && h.galatMuat) kabar('Gagal: ' + h.galatMuat);
   },
   nonaktifOrang: async function (v) {
