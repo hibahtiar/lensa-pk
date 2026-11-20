@@ -726,6 +726,908 @@ function gasMuatLembar(peta) {
 }
 
 /* === 03-kit === */
+/* =====================================================================
+ *  KitImpor — modul Impor bersama LENSA Suite (Tahap 2A).
+ *  Satu pengurai laporan sistem (ITW/ITB, Monitoring, Data Badan Usaha, KPI084, KPI085, Kartu Iuran,
+ *  Status PK LENSA) untuk mesin LENSA (Apps Script & perangkat), Monitor SPPG, dan Hub.
+ *  ES5 murni, tanpa layanan Google: jalan di Apps Script dan di browser.
+ *  Laporan diurai sekali di perangkat yang mengunggah, lalu dikirim sebagai "laporan ringkas"
+ *  (hanya kolom yang dipakai) ke Gudang Laporan KC.
+ * ===================================================================== */
+var KitImpor = (function () {
+  'use strict';
+  var VERSI = '1.0';
+  var CFG = {
+    // jenis laporan yang dipakai aplikasi ini (urutan = urutan pengenal)
+    jenis: ['DATA_BU', 'MONITORING', 'ITW_ITB', 'KARTU_IURAN', 'KPI084', 'KPI085'],
+    tolak: {},                 // jenis yang dikenali tetapi ditolak aplikasi ini → pesan
+    saranPemetaan: false,      // pesan galat menyarankan tab PEMETAAN (LENSA)
+    tambahan: function () { return []; },  // baris tab PEMETAAN: { laporan, kolom_lensa, judul_di_laporan, wajib }
+    hariIni: function () { return tglLokal(new Date()); },
+    tglLokal: tglLokal
+  };
+  function tglLokal(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function pasang(o) { Object.keys(o || {}).forEach(function (k) { CFG[k] = o[k]; }); _PEMETAAN = null; }
+  function lupakan() { _PEMETAAN = null; }
+
+  var DEF_PEMETAAN = {
+    // 2A: Status PK unduhan LENSA (dibaca Monitor SPPG)
+    LENSA_STATUS: [['npp', 'npp', 'Ya'], ['div', 'div', ''], ['nama', 'nama', 'Ya'], ['segmen', 'segmen', ''], ['kontak_utama', 'kontak utama', 'Ya']],
+    DATA_BU: [
+      ['npp', 'npp', 'Ya'],
+      ['div', 'div|divisi', ''],
+      ['nama', 'nama pemberi kerja badan usaha|pemberi kerja badan usaha|nama badan usaha|nama perusahaan|nama pk|nama pemberi kerja', 'Ya'],
+      ['blth_keps', 'blth keps|keps awal|keps', ''],
+      ['blth_na', 'blth na', ''],
+      ['kategori', 'kategori pk bu|kategori', ''],
+      ['rate_jkk', 'rate jkk|rate', ''],
+      ['kode_ilo', 'kode ilo', ''],
+      ['nama_ilo', 'nama ilo', ''],
+      ['total_upah', 'total upah', 'Ya'],
+      ['blth_iuran', 'iuran trakhir blth|iuran terakhir blth|blth iuran|blth', ''],
+      ['jumlah_iuran', 'iuran trakhir jumlah|iuran terakhir jumlah|jumlah iuran|jumlah', ''],
+      ['alamat', 'alamat', 'Ya'],
+      ['kabupaten', 'kabupaten|kab kota|kota', ''],
+      ['kode_area', 'kode area', ''],
+      ['telp', 'no telp|telp|telepon|no telepon', ''],
+      ['pic_nama', 'data pic nama|nama pic|pic nama|nama', ''],
+      ['pic_jabatan', 'data pic jabatan|jabatan pic|pic jabatan|jabatan', ''],
+      ['pic_hp', 'data pic no hp|no hp|hp|handphone|no handphone', ''],
+      ['pic_email', 'data pic email|email|e mail', '']
+    ],
+    MONITORING: [
+      ['npp', 'npp', 'Ya'],
+      ['div', 'div|divisi', ''],
+      ['nama', 'pemberi kerja badan usaha|nama pemberi kerja badan usaha|nama badan usaha|nama perusahaan|nama pk|nama', 'Ya'],
+      ['keps_awal', 'keps awal|kepesertaan awal', ''],
+      ['keps_jp', 'keps jp|kepesertaan jp', ''],
+      ['blth_na', 'blth na|na blth', ''],
+      ['skala', 'skala usaha|skala', ''],
+      ['prog', 'prog|program', ''],
+      ['tk_tambah', 'penambahan|tk tambah|tk masuk', ''],
+      ['tk_kurang', 'pengurangan|tk kurang|tk keluar', ''],
+      ['tk_aktif', 'tk aktif|aktif', 'Ya'],
+      ['tk_na', 'tk na|tk nonaktif|tk non aktif', ''],
+      ['tk_jumlah', 'jumlah tk|tk jumlah|jumlah', ''],
+      ['iuran_berjalan', 'total iuran berjalan|iuran berjalan|total iuran', ''],
+      ['tgl_terima', 'tgl penerimaan iuran terakhir|tgl penerimaan iuran terkahir|tgl penerimaan|tanggal penerimaan|tgl terima|penerimaan', 'Ya'],
+      ['blth_entri', 'entri dutk blth|blth entri|entri dutk|blth#1', ''],
+      ['blth_posting', 'posting terakhir blth|blth posting|posting terakhir|blth#2', 'Ya'],
+      ['nilai_posting', 'nilai posting|posting terakhir nilai posting', ''],
+      ['sipp_prs', 'sipp prs|sipp', ''],
+      ['itw', 'itw', ''],
+      ['ibr_ijt', 'ijt|nilai ibr ijt|ibr ijt', ''],
+      ['ibr_idm', 'idm|nilai ibr idm|ibr idm', '']
+    ],
+    ITW_ITB: [
+      ['npp', 'npp', 'Ya'],
+      ['div', 'div|divisi', ''],
+      ['nama', 'nama pemberi kerja badan usaha|pemberi kerja badan usaha|nama badan usaha|nama perusahaan|nama pk|nama', 'Ya'],
+      ['pembina', 'pembina', ''],
+      ['blth_posting', 'itrf blth|blth itrf|blth posting|blth', 'Ya'],
+      ['iuran_terakhir', 'itrf nilai rp|itrf nilai|nilai itrf|iuran terakhir|nilai rp#1', 'Ya'],
+      ['periode_nilai', 'periode penilaian|periode', 'Ya'],
+      ['bln_belum_posting', 'jml bln blm posting|jumlah bulan belum posting|bln blm posting|blm posting|belum posting', 'Ya'],
+      ['ibr_nilai', 'kecukupan ibr nilai rp|ibr nilai rp|ibr nilai|nilai ibr|nilai rp#2', ''],
+      ['ibr_bulan', 'kecukupan ibr jml bulan|ibr jml bulan|jml bulan|jumlah bulan|ibr bulan', 'Ya'],
+      ['koef', 'koef|koefisien', 'Ya'],
+      ['itw', 'itw', 'Ya'],
+      ['itb', 'itb', 'Ya']
+    ],
+    KARTU_IURAN: [
+      ['npp', 'npp', ''],
+      ['blth_iuran', 'blth iuran|bulan iuran', 'Ya'],
+      ['tgl_bayar', 'tanggal bayar|tgl bayar|tanggal pembayaran', 'Ya'],
+      ['jht', 'jht', ''], ['jkk', 'jkk', ''], ['jkm', 'jkm', ''], ['jp', 'jp', ''], ['jkp', 'jkp', ''],
+      ['denda', 'denda', ''],
+      ['total_iuran', 'total iuran', 'Ya'],
+      ['total_upah', 'total upah tk|total upah', ''],
+      ['jumlah_tk', 'jumlah tk|jml tk', '']
+    ],
+    KPI084: [
+      ['bulan', 'bulan', 'Ya'],
+      ['pk_itw', 'pkbu itw', 'Ya'], ['pk_lancar', 'pkbu lancar', 'Ya'], ['pk_kurang_lancar', 'pkbu kurang lancar|pkbu kurang', 'Ya'],
+      ['pk_diragukan', 'pkbu diragukan', 'Ya'], ['pk_macet', 'pkbu macet', 'Ya'],
+      ['mig_itw', 'itw ke menunggak#1', 'Ya'], ['mig_lancar', 'lancar ke kurang lancar#1', 'Ya'],
+      ['mig_kurang_lancar', 'kurang lancar ke diragukan#1', 'Ya'], ['mig_diragukan', 'diragukan ke macet#1', 'Ya'],
+      ['cap_itw', 'itw ke menunggak#2', ''], ['cap_lancar', 'lancar ke kurang lancar#2', ''],
+      ['cap_kurang_lancar', 'kurang lancar ke diragukan#2', ''], ['cap_diragukan', 'diragukan ke macet#2', ''],
+      ['rata_itw', 'itw ke menunggak#3', ''], ['rata_lancar', 'lancar ke kurang lancar#3', ''],
+      ['rata_kurang_lancar', 'kurang lancar ke diragukan#3', ''], ['rata_diragukan', 'diragukan ke macet#3', ''],
+      ['bobot', 'bobot', ''], ['skor', 'skor', '']
+    ],
+    KPI085: [
+      ['npp', 'npp', 'Ya'],
+      ['pembina', 'nama pembina|pembina', 'Ya'],
+      ['nama', 'nama perusahan|nama perusahaan|nama pemberi kerja', ''],
+      ['kelas_lalu', 'piutang*#1', 'Ya'],
+      ['kelas_ini', 'piutang*#2', 'Ya'],
+      ['migrasi', 'migrasi', 'Ya']
+    ]
+  };
+
+  // Urutan kolom seperti cetakan laporan; dipakai bila judul kolom tidak terbaca tetapi jumlah kolom sama.
+  var URUTAN_KOLOM = {
+    ITW_ITB: ['no', 'kci', 'kcp', 'npp', 'div', 'nama', 'pembina', 'blth_posting', 'iuran_terakhir', 'periode_nilai', 'bln_belum_posting', 'ibr_nilai', 'ibr_bulan', 'koef', 'itw', 'itb'],
+    MONITORING: ['no', 'npp', 'div', 'nama', 'keps_awal', 'keps_jp', 'blth_na', 'skala', 'prog', 'tk_tambah', 'tk_kurang', 'tk_aktif', 'tk_na', 'tk_jumlah', 'iuran_berjalan', 'tgl_terima', 'blth_entri', 'blth_posting', 'nilai_posting', 'sipp_prs', 'itw', 'ibr_ijt', 'ibr_idm'],
+    DATA_BU: ['no', 'npp', 'div', 'nama', 'blth_keps', 'blth_na', 'kategori', 'rate_jkk', 'kode_ilo', 'nama_ilo', 'total_upah', 'blth_iuran', 'jumlah_iuran', 'alamat', 'kabupaten', 'kode_area', 'telp', 'pic_nama', 'pic_jabatan', 'pic_hp', 'pic_email'],
+    KARTU_IURAN: ['no', 'blth_iuran', 'tgl_bayar', 'jht', 'jkk', 'jkm', 'jp', 'jkp', 'denda', 'total_iuran', 'total_upah', 'jumlah_tk'],
+    KPI084: ['no', 'bulan', 'pk_itw', 'pk_lancar', 'pk_kurang_lancar', 'pk_diragukan', 'pk_macet', 'mig_itw', 'mig_lancar', 'mig_kurang_lancar', 'mig_diragukan',
+      'cap_itw', 'cap_lancar', 'cap_kurang_lancar', 'cap_diragukan', 'rata_itw', 'rata_lancar', 'rata_kurang_lancar', 'rata_diragukan', 'bobot', 'skor'],
+    KPI085: ['no', 'pembina', 'npp', 'nama', 'kelas_lalu', 'kelas_ini', 'migrasi']
+  };
+
+  var NAMA_LAPORAN = { DATA_BU: 'Data Badan Usaha', MONITORING: 'Monitoring', ITW_ITB: 'ITW/ITB', KARTU_IURAN: 'Kartu Iuran', KPI084: 'KPI084 Rekap Migrasi Piutang', KPI085: 'KPI085 Detil Migrasi Piutang', LENSA_STATUS: 'STATUS_PK (LENSA)' };
+  var BULAN_SINGKAT = { jan: 1, feb: 2, mar: 3, apr: 4, mei: 5, may: 5, jun: 6, jul: 7, agu: 8, ags: 8, agt: 8, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12 };
+  var BULAN_KPI = /^(jan|feb|mar|apr|mei|may|jun|jul|agu|ags|agt|aug|sep|okt|oct|nov|des|dec)[a-z]*$/;
+  var TIPE_KOLOM = {
+    no: 'bulat', npp: 'npp', div: 'div', nama: 'teks', kci: 'kode', kcp: 'kode', pembina: 'pembina',
+    blth_keps: 'blth', blth_na: 'blth', kategori: 'teks', rate_jkk: 'desimal', kode_ilo: 'ilo', nama_ilo: 'teks',
+    total_upah: 'angka', blth_iuran: 'blth', jumlah_iuran: 'angka', alamat: 'teks', kabupaten: 'teks', kode_area: 'digit',
+    telp: 'digit', pic_nama: 'teks', pic_jabatan: 'teks', pic_hp: 'digit', pic_email: 'email',
+    blth_posting: 'blth', iuran_terakhir: 'angka', periode_nilai: 'blth', bln_belum_posting: 'bulat', ibr_nilai: 'angka',
+    ibr_bulan: 'bulat', koef: 'bulat', itw: 'yt', itb: 'yt',
+    keps_awal: 'blth', keps_jp: 'blth', skala: 'skala', prog: 'prog', tk_tambah: 'bulat', tk_kurang: 'bulat', tk_aktif: 'bulat',
+    tk_na: 'bulat', tk_jumlah: 'bulat', iuran_berjalan: 'angka', tgl_terima: 'tgl', blth_entri: 'blth', nilai_posting: 'angka',
+    sipp_prs: 'sipp', ibr_ijt: 'angka', ibr_idm: 'angka',
+    tgl_bayar: 'tgl', jht: 'angka', jkk: 'angka', jkm: 'angka', jp: 'angka', jkp: 'angka', denda: 'angka', total_iuran: 'angka',
+    jumlah_tk: 'bulat', kelas_lalu: 'kelas', kelas_ini: 'kelas', migrasi: 'yatidak'
+  };
+  var SERING_KOSONG = { blth_na: 1, kategori: 1, keps_jp: 1, prog: 1, jkp: 1, denda: 1 };
+
+  function pad2(n) { n = String(n); return n.length < 2 ? '0' + n : n; }
+
+  function norm(s) {
+    return String(s === null || s === undefined ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  function judulKata(s) {
+    return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+      .replace(/(^|[\s\-\.\(\/'])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); });
+  }
+
+  function keAngka(v, desimal) {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    var s = String(v).trim().replace(/\s/g, '').replace(/^rp\.?/i, '');
+    if (!s || s === '-' || s === '--') return null;
+    var neg = false;
+    if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+    if (s.charAt(0) === '-') { neg = true; s = s.slice(1); }
+    var titik = s.indexOf('.') >= 0, koma = s.indexOf(',') >= 0;
+    if (titik && koma) {
+      if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
+      else s = s.replace(/,/g, '');
+    } else if (koma) {
+      if (/^\d{1,3}(,\d{3})+$/.test(s) && !desimal) s = s.replace(/,/g, '');
+      else if (/^\d{1,3}(,\d{3}){2,}$/.test(s)) s = s.replace(/,/g, '');
+      else s = s.replace(',', '.');
+    } else if (titik) {
+      if (/^\d{1,3}(\.\d{3})+$/.test(s) && !desimal) s = s.replace(/\./g, '');
+      else if (/^\d{1,3}(\.\d{3}){2,}$/.test(s)) s = s.replace(/\./g, '');
+    }
+    if (!/^\d*\.?\d+$/.test(s)) return null;
+    var n = parseFloat(s);
+    return neg ? -n : n;
+  }
+
+  function tahun4(y) { y = String(y); return y.length === 2 ? (+y > 50 ? '19' : '20') + y : y; }
+
+  function ymd(y, m, d) {
+    y = +y; m = +m; d = +d;
+    if (!y || m < 1 || m > 12 || d < 1 || d > 31) return '';
+    return y + '-' + pad2(m) + '-' + pad2(d);
+  }
+
+  function keTanggal(v) {
+    if (v === null || v === undefined || v === '') return '';
+    if (v instanceof Date) return isNaN(v.getTime()) ? '' : CFG.tglLokal(v);
+    if (typeof v === 'number') {
+      if (v > 20000 && v < 80000) {
+        var d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000);
+        return ymd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+      }
+      return '';
+    }
+    var s = String(v).trim().toLowerCase().replace(/[t\s]+\d{1,2}[:.]\d{2}([:.]\d{2})?.*$/, '');
+    var m;
+    if ((m = s.match(/^(\d{4})[\-\/\.](\d{1,2})[\-\/\.](\d{1,2})$/))) return ymd(m[1], m[2], m[3]);
+    if ((m = s.match(/^(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{2}|\d{4})$/))) return ymd(tahun4(m[3]), m[2], m[1]);
+    if ((m = s.match(/^(\d{1,2})[\-\/\. ]([a-z]{3})[a-z]*[\-\/\. ](\d{2}|\d{4})$/))) {
+      var b = BULAN_SINGKAT[m[2]];
+      if (b) return ymd(tahun4(m[3]), b, m[1]);
+    }
+    return '';
+  }
+
+  function keBlth(v) {
+    if (v === null || v === undefined || v === '') return '';
+    if (v instanceof Date) return isNaN(v.getTime()) ? '' : CFG.tglLokal(v).slice(0, 7);
+    var s = String(v).trim().toLowerCase();
+    var m, bln;
+    if ((m = s.match(/^(\d{1,2})[\-\/\.](\d{4})$/))) bln = [m[2], m[1]];
+    else if ((m = s.match(/^(\d{4})[\-\/\.](\d{1,2})$/))) bln = [m[1], m[2]];
+    else if ((m = s.match(/^([a-z]{3})[a-z]*[\-\/\. ](\d{2}|\d{4})$/)) && BULAN_SINGKAT[m[1]]) bln = [tahun4(m[2]), BULAN_SINGKAT[m[1]]];
+    else if ((m = s.match(/^((?:19|20)\d{2})(0[1-9]|1[0-2])$/))) bln = [m[1], m[2]];
+    else if ((m = s.match(/^(0[1-9]|1[0-2])((?:19|20)\d{2})$/))) bln = [m[2], m[1]];
+    if (bln) {
+      var bb = +bln[1];
+      return (bb >= 1 && bb <= 12) ? bln[0] + '-' + pad2(bb) : '';
+    }
+    var t = keTanggal(v);
+    return t ? t.slice(0, 7) : '';
+  }
+
+  function keYT(v) {
+    var s = String(v === null || v === undefined ? '' : v).trim().toUpperCase();
+    if (/^(Y|YA|YES|TRUE|1)$/.test(s)) return 'Y';
+    if (/^(T|TIDAK|N|NO|FALSE|0)$/.test(s)) return 'T';
+    return '';
+  }
+
+  function rapikanNpp(v) {
+    var s = String(v === null || v === undefined ? '' : v).trim().toUpperCase().replace(/^'/, '').replace(/\s/g, '');
+    if (/^\d+\.0+$/.test(s)) s = s.replace(/\.0+$/, '');
+    if (/^\d{7}$/.test(s)) s = '0' + s;
+    return /^[A-Z]{2}\d{6}$|^\d{8}$/.test(s) ? s : '';
+  }
+
+  function rapikanDiv(v) {
+    var s = String(v === null || v === undefined ? '' : v).trim().replace(/^'/, '').replace(/\.0+$/, '');
+    if (!s) return '000';
+    return /^\d{1,3}$/.test(s) ? ('000' + s).slice(-3) : s;
+  }
+
+  function rusakExcel(v) { return /^\s*\d+(\.\d+)?e\+?\d+\s*$/i.test(String(v === null || v === undefined ? '' : v)); }
+
+  function kelasDariTeks(s) {
+    var n = norm(s);
+    if (!n) return '';
+    if (n === 'itw') return 'itw';
+    if (n.indexOf('kurang') === 0) return 'kurang_lancar';
+    if (n.indexOf('lancar') === 0) return 'lancar';
+    if (n.indexOf('ragu') >= 0) return 'diragukan';
+    if (n.indexOf('macet') >= 0) return 'macet';
+    return '';
+  }
+
+  function uraiCsv(teks, pemisah) {
+    teks = String(teks || '').replace(/^\uFEFF/, '');
+    var baris = [], sel = '', row = [], kutip = false, i = 0, n = teks.length;
+    while (i < n) {
+      var ch = teks.charAt(i);
+      if (kutip) {
+        if (ch === '"') {
+          if (teks.charAt(i + 1) === '"') { sel += '"'; i += 2; continue; }
+          kutip = false; i++; continue;
+        }
+        sel += ch; i++; continue;
+      }
+      if (ch === '"' && sel === '') { kutip = true; i++; continue; }
+      if (ch === pemisah) { row.push(sel); sel = ''; i++; continue; }
+      if (ch === '\r') { i++; continue; }
+      if (ch === '\n') { row.push(sel); baris.push(row); row = []; sel = ''; i++; continue; }
+      sel += ch; i++;
+    }
+    if (sel !== '' || row.length) { row.push(sel); baris.push(row); }
+    return baris.map(function (r) { return r.map(function (x) { return String(x).trim(); }); });
+  }
+
+  function deteksiPemisah(teks) {
+    var contoh = String(teks || '').split(/\r?\n/).slice(0, 60).join('\n');
+    var terbaik = ',', skor = -1;
+    [',', ';', '\t', '|'].forEach(function (p) {
+      var g = uraiCsv(contoh, p);
+      var lebar = g.map(function (r) { return r.length; }).sort(function (a, b) { return b - a; });
+      var s = lebar.length ? lebar[Math.floor(lebar.length / 4)] : 0;
+      if (s > skor) { skor = s; terbaik = p; }
+    });
+    return terbaik;
+  }
+
+  function aliasSemua() {
+    var set = {};
+    CFG.jenis.forEach(function (lap) {
+      pemetaan(lap).forEach(function (d) {
+        d.alias.forEach(function (a) { set[norm(a.replace(/#\d+$/, ''))] = true; });
+      });
+    });
+    delete set[''];
+    return set;
+  }
+
+  function barisData(row) {
+    var adaNpp = false, adaBlth = false, adaTgl = false, adaBulan = false, angka = 0;
+    for (var i = 0; i < row.length; i++) {
+      var x = String(row[i] || '').trim();
+      if (!x) continue;
+      if (/^(jan|feb|mar|apr|mei|may|jun|jul|agu|ags|aug|sep|okt|oct|nov|des|dec)$/i.test(x)) adaBulan = true;
+      if (keAngka(x) !== null) angka++;
+      if (/^[A-Z]{2}\d{6}$/i.test(x)) adaNpp = true;
+      else if (/^\d{7,8}$/.test(x) && !/^(19|20)\d{2}(0[1-9]|1[0-2])([0-2]\d|3[01])$/.test(x)) adaNpp = true;
+      else if (/^\d{1,2}[\-\/]\d{4}$/.test(x)) adaBlth = true;
+      else if (/^\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2,4}$/.test(x)) adaTgl = true;
+    }
+    return adaNpp || (adaBlth && adaTgl) || (adaBulan && angka >= 8);
+  }
+
+  function barisJudulKelompok(row) {
+    var isi = row.filter(function (x) { return String(x || '').trim() !== ''; });
+    if (isi.length < 2) return false;
+    for (var i = 0; i < isi.length; i++) if (String(isi[i]).indexOf(':') >= 0) return false;
+    return true;
+  }
+
+  function analisaGrid(grid, namaFile) {
+    var semua = aliasSemua();
+    var terbaik = -1, skorTerbaik = 0;
+    var batas = Math.min(grid.length, 80);
+    for (var r = 0; r < batas; r++) {
+      var skor = 0;
+      for (var c = 0; c < grid[r].length; c++) {
+        var h = norm(grid[r][c]);
+        if (h && semua[h]) skor++;
+      }
+      if (skor > skorTerbaik) { skorTerbaik = skor; terbaik = r; }
+    }
+    if (skorTerbaik < 3) {
+      // judul kolom tidak dikenali: pakai baris tepat di atas data pertama, lalu andalkan urutan kolom
+      terbaik = -2;
+      for (var rr = 0; rr < batas; rr++) if (barisData(grid[rr])) { terbaik = rr - 1; break; }
+      if (terbaik === -2) throw new Error('Judul kolom laporan tidak ditemukan dan tidak ada baris NPP. Pastikan file adalah hasil ekspor laporan sistem (CSV/XLSX).');
+    }
+
+    var mulai = -1;
+    for (var r2 = terbaik + 1; r2 < grid.length; r2++) {
+      if (barisData(grid[r2])) { mulai = r2; break; }
+    }
+    if (mulai < 0) throw new Error('Tidak ada baris data (NPP) di bawah judul kolom.');
+
+    var atas = terbaik < 0 ? mulai : terbaik;
+    for (var k = 1; k <= 4 && terbaik >= 0 && terbaik - k >= 0; k++) {
+      if (barisJudulKelompok(grid[terbaik - k])) atas = terbaik - k;
+      else break;
+    }
+    var lebar = 0;
+    for (var r3 = atas; r3 < Math.min(grid.length, mulai + 5); r3++) lebar = Math.max(lebar, grid[r3].length);
+    var bagian = [], gabung = [];
+    for (var c2 = 0; c2 < lebar; c2++) {
+      var p = [];
+      for (var r4 = atas; r4 < mulai; r4++) {
+        var t = norm(grid[r4][c2]);
+        if (t) p.push(t);
+      }
+      bagian.push(p);
+      gabung.push(p.join(' '));
+    }
+    var dataPertama = grid[mulai], lebarData = 0;
+    for (var c3 = 0; c3 < dataPertama.length; c3++) if (String(dataPertama[c3]).trim() !== '') lebarData = c3 + 1;
+
+    // teks di luar tabel (judul atas dan catatan bawah) untuk tanggal cetak, periode, pembina
+    var luar = grid.slice(0, atas).map(function (x) { return x.join(' '); });
+    for (var r5 = mulai; r5 < grid.length; r5++) {
+      if (!barisData(grid[r5])) luar.push(grid[r5].join(' '));
+    }
+    var an = {
+      kepala: terbaik, atas: atas, mulai: mulai, lebar: lebar, lebarData: lebarData,
+      bagian: bagian, gabung: gabung, judulTeks: luar.join('\n'), namaFile: namaFile || ''
+    };
+    an.jenis = tebakJenis(gabung.join(' | '), namaFile);
+    return an;
+  }
+
+  /** Aturan pengenal jenis laporan. Jenis yang tidak dipakai aplikasi ini: ditolak dengan pesannya (CFG.tolak) atau dilewati. */
+  var ATURAN_JUDUL = [
+    ['LENSA_STATUS', function (t) { return /kontak utama/.test(t) && /(status bayar|segmen)/.test(t); }],
+    ['KPI084', function (t) { return /pkbu itw/.test(t) && /menunggak/.test(t); }],
+    ['KPI085', function (t) { return /migrasi/.test(t) && /piutang/.test(t) && /pembina/.test(t); }],
+    ['ITW_ITB', function (t) { return / koef/.test(t) && / itb /.test(t); }],
+    ['ITW_ITB', function (t) { return /kecukupan ibr/.test(t) && /(blm posting|belum posting|penilaian)/.test(t); }],
+    ['KARTU_IURAN', function (t) { return /blth iuran/.test(t) && /(tanggal|tgl) bayar/.test(t); }],
+    ['MONITORING', function (t) { return /(penambahan|pengurangan)/.test(t) && /aktif/.test(t); }],
+    ['DATA_BU', function (t) { return /(nama ilo|kode ilo|rate jkk)/.test(t); }]
+  ];
+  var ATURAN_FILE = [
+    ['KPI084', /kpi\s*_?084/], ['KPI085', /kpi\s*_?085/], ['LENSA_STATUS', /status.?pk/], ['ITW_ITB', /itw|itb/], ['KARTU_IURAN', /kartu/],
+    ['MONITORING', /monitor/], ['DATA_BU', /badan.?usaha|dbu|data.?bu/]
+  ];
+  function dipakai(j) { return CFG.jenis.indexOf(j) >= 0; }
+  function tebakJenis(teks, namaFile) {
+    var t = ' ' + teks + ' ', i;
+    for (i = 0; i < ATURAN_JUDUL.length; i++) {
+      var a = ATURAN_JUDUL[i];
+      if (!a[1](t)) continue;
+      if (dipakai(a[0])) return a[0];
+      if (CFG.tolak[a[0]]) throw new Error(CFG.tolak[a[0]]);
+    }
+    var f = String(namaFile || '').toLowerCase();
+    for (i = 0; i < ATURAN_FILE.length; i++) if (dipakai(ATURAN_FILE[i][0]) && ATURAN_FILE[i][1].test(f)) return ATURAN_FILE[i][0];
+    throw new Error('Jenis laporan tidak dikenali dari judul kolom maupun nama file.');
+  }
+
+  function cariKolom(an, alias, dipakai) {
+    var m = String(alias).match(/^(.*?)(\*)?(?:#(\d+))?$/);
+    var a = norm(m[1]), awalan = !!m[2], ke = m[3] ? +m[3] : 1, berurut = !!m[3];
+    if (!a) return -1;
+    var cocok = [], c;
+    var sama = function (c) { return an.gabung[c] === a || an.bagian[c].indexOf(a) >= 0; };
+    var memuat = function (c) { return (' ' + an.gabung[c] + ' ').indexOf(' ' + a + ' ') >= 0; };
+    if (awalan) {
+      for (c = 0; c < an.lebar; c++) {
+        if (an.gabung[c].indexOf(a) === 0 || an.bagian[c].some(function (p) { return p.indexOf(a) === 0; })) cocok.push(c);
+      }
+      return cocok.length >= ke ? cocok[ke - 1] : -1;
+    }
+    // #n: kolom ke-n (urut kiri ke kanan) yang judulnya sama atau memuat alias
+    if (berurut) {
+      for (c = 0; c < an.lebar; c++) if (sama(c) || memuat(c)) cocok.push(c);
+      return cocok.length >= ke ? cocok[ke - 1] : -1;
+    }
+    for (c = 0; c < an.lebar; c++) {
+      if (dipakai[c]) continue;
+      if (sama(c)) cocok.push(c);
+    }
+    if (!cocok.length) {
+      for (c = 0; c < an.lebar; c++) {
+        if (dipakai[c]) continue;
+        if (memuat(c)) cocok.push(c);
+      }
+      cocok.sort(function (x, y) { return x - y; });
+    }
+    return cocok.length >= ke ? cocok[ke - 1] : -1;
+  }
+
+  function cocokTipe(tipe, x) {
+    switch (tipe) {
+      case 'bulat': return /^-?(\d{1,3}(,\d{3})+|\d+)$/.test(x);
+      case 'angka': return keAngka(x) !== null;
+      case 'desimal': var a = keAngka(x, true); return a !== null && a < 100;
+      case 'digit': return /^[\d\s\-\+\(\)\/]{3,}$/.test(x) || rusakExcel(x);
+      case 'ilo': return /^\d{3,5}$/.test(x);
+      case 'blth': return !!keBlth(x) && !keTanggal(x) && !/^\d+$/.test(x);
+      case 'tgl': return !!keTanggal(x);
+      case 'teks': return /[A-Za-z]{2,}/.test(x) && !keBlth(x) && x.indexOf('@') < 0 && !/^(ya|tidak)$/i.test(x);
+      case 'email': return x.indexOf('@') > 0;
+      case 'npp': return !!rapikanNpp(x);
+      case 'div': return /^\d{1,3}$/.test(x);
+      case 'kode': return /^[A-Z]\d{2}$/i.test(x);
+      case 'pembina': return /^[A-Z]{2}\d{6}/i.test(x) || (/[A-Za-z]{3,}/.test(x) && !keBlth(x));
+      case 'yt': return /^(Y|T)$/i.test(x);
+      case 'yatidak': return /^(YA|TIDAK|Y|T)$/i.test(x);
+      case 'skala': return /^(B|Mn|K|Mi|MI|M)$/.test(x);
+      case 'prog': return /^\dP$/i.test(x);
+      case 'sipp': return /^(-|sipp|prs|sipp\/prs)$/i.test(x);
+      case 'kelas': return !!kelasDariTeks(x);
+    }
+    return true;
+  }
+
+  function barisContoh(an, grid) {
+    var out = [];
+    for (var r = an.mulai; r < grid.length && out.length < 150; r++) if (barisData(grid[r])) out.push(grid[r]);
+    return out;
+  }
+
+  function skorPeta(jenis, peta, contoh) {
+    var def = pemetaan(jenis), wajib = {};
+    def.forEach(function (d) { if (d.wajib) wajib[d.kolom] = true; });
+    var total = 0, ok = true, buruk = [];
+    Object.keys(peta).forEach(function (k) {
+      var tipe = TIPE_KOLOM[k];
+      if (!tipe) return;
+      var isi = 0, pas = 0;
+      contoh.forEach(function (row) {
+        var x = String(row[peta[k]] === undefined ? '' : row[peta[k]]).trim();
+        if (!x) return;
+        isi++;
+        if (cocokTipe(tipe, x)) pas++;
+      });
+      total += pas - (isi - pas);
+      if (wajib[k] && (!isi || pas / isi < 0.8)) { ok = false; buruk.push(k); }
+    });
+    return { total: total, ok: ok, buruk: buruk };
+  }
+
+  function petakanIsi(jenis, contoh) {
+    var urut = URUTAN_KOLOM[jenis];
+    if (!urut || !contoh.length) return null;
+    var lebar = 0;
+    contoh.forEach(function (r) { lebar = Math.max(lebar, r.length); });
+    var slot = [];
+    for (var c = 0; c < lebar; c++) {
+      if (contoh.some(function (r) { return String(r[c] === undefined ? '' : r[c]).trim() !== ''; })) slot.push(c);
+    }
+    var def = pemetaan(jenis), wajib = {};
+    def.forEach(function (d) { if (d.wajib) wajib[d.kolom] = true; });
+    var nilai = {};
+    function skor(i, j) {
+      var key = i + '|' + j;
+      if (nilai[key] !== undefined) return nilai[key];
+      var tipe = TIPE_KOLOM[urut[i]], isi = 0, pas = 0;
+      contoh.forEach(function (r) {
+        var x = String(r[slot[j]] === undefined ? '' : r[slot[j]]).trim();
+        if (!x) return;
+        isi++;
+        if (!tipe || cocokTipe(tipe, x)) pas++;
+      });
+      return (nilai[key] = isi ? pas / isi : 0);
+    }
+    var n = urut.length, m = slot.length, NEG = -1e9;
+    var dp = [], dari = [];
+    for (var i = 0; i <= n; i++) { dp.push([]); dari.push([]); for (var j = 0; j <= m; j++) { dp[i].push(NEG); dari[i].push(''); } }
+    dp[0][0] = 0;
+    for (i = 0; i <= n; i++) {
+      for (j = 0; j <= m; j++) {
+        var v = dp[i][j];
+        if (v === NEG) continue;
+        if (i < n && j < m) { var a = v + skor(i, j); if (a > dp[i + 1][j + 1]) { dp[i + 1][j + 1] = a; dari[i + 1][j + 1] = 'p'; } }
+        if (i < n) { var b = v - (wajib[urut[i]] ? 3 : SERING_KOSONG[urut[i]] ? 0.1 : 0.4); if (b > dp[i + 1][j]) { dp[i + 1][j] = b; dari[i + 1][j] = 'k'; } }
+        if (j < m) { var d = v - 0.6; if (d > dp[i][j + 1]) { dp[i][j + 1] = d; dari[i][j + 1] = 's'; } }
+      }
+    }
+    var peta = {};
+    i = n; j = m;
+    while (i > 0 || j > 0) {
+      var arah = dari[i][j];
+      if (arah === 'p') { peta[urut[i - 1]] = slot[j - 1]; i--; j--; }
+      else if (arah === 'k') i--;
+      else j--;
+    }
+    delete peta.no;
+    return peta;
+  }
+
+  function petakanKolom(an, grid) {
+    var contoh = grid ? barisContoh(an, grid) : [];
+    var judul = null, galatJudul = null;
+    try { judul = petakanJudul(an); } catch (e) { galatJudul = e; }
+    if (!contoh.length || an.jenis === 'KPI084' || !URUTAN_KOLOM[an.jenis]) {
+      if (galatJudul) throw galatJudul;
+      return judul;
+    }
+    var sJudul = judul ? skorPeta(an.jenis, judul, contoh) : null;
+    var isi = petakanIsi(an.jenis, contoh);
+    var sIsi = isi ? skorPeta(an.jenis, isi, contoh) : null;
+    if (sJudul && sJudul.ok && (!sIsi || !sIsi.ok || sIsi.total <= sJudul.total * 1.05)) return judul;
+    if (sIsi && sIsi.ok) {
+      an.posisi = false;
+      an.menurutIsi = true;
+      return isi;
+    }
+    if (galatJudul) throw galatJudul;
+    throw new Error('Isi kolom tidak sesuai dengan laporan ' + NAMA_LAPORAN[an.jenis] + ' (kolom bermasalah: ' + ((sJudul && sJudul.buruk) || []).join(', ') +
+      ').' + (CFG.saranPemetaan ? ' Kirim baris judul kolom file ini ke pengembang, atau sesuaikan tab PEMETAAN.' : ''));
+  }
+
+  function petakanJudul(an) {
+    var def = pemetaan(an.jenis);
+    var peta = {}, dipakai = {};
+    def.forEach(function (d) {
+      var c = -1;
+      for (var i = 0; i < d.alias.length && c < 0; i++) c = cariKolom(an, d.alias[i], dipakai);
+      if (c >= 0) { peta[d.kolom] = c; dipakai[c] = true; }
+    });
+    var kurang = def.filter(function (d) { return d.wajib && peta[d.kolom] === undefined; }).map(function (d) { return d.kolom; });
+    if (kurang.length) {
+      var urut = URUTAN_KOLOM[an.jenis];
+      if (urut && (an.lebarData === urut.length || an.lebar === urut.length)) {
+        peta = {};
+        urut.forEach(function (k, i) { peta[k] = i; });
+        kurang = [];
+        an.posisi = true;
+      }
+    }
+    if (kurang.length) {
+      var judul = an.gabung.filter(String).join(' | ');
+      throw new Error('Kolom wajib tidak ditemukan: ' + kurang.join(', ') + '. Judul kolom di file: ' + judul +
+        '.' + (CFG.saranPemetaan ? ' Tambahkan judul yang sesuai di tab PEMETAAN (kolom judul_di_laporan).' : ''));
+    }
+    return peta;
+  }
+
+  function ambilBaris(an, peta, grid) {
+    var out = [], prev = null;
+    for (var r = an.mulai; r < grid.length; r++) {
+      var row = grid[r];
+      var o = {};
+      Object.keys(peta).forEach(function (k) {
+        var x = row[peta[k]];
+        o[k] = x === undefined || x === null ? '' : String(x).trim();
+      });
+      if (an.jenis === 'KARTU_IURAN') {
+        if (!/^\d/.test(o.blth_iuran) || !keBlth(o.blth_iuran)) continue;
+        out.push(o);
+        continue;
+      }
+      if (an.jenis === 'KPI084') {
+        var bl = norm(o.bulan);
+        if (!BULAN_SINGKAT[bl.slice(0, 3)] || !/^[a-z]+$/.test(bl)) continue;
+        if (out.some(function (x) { return norm(x.bulan) === bl; })) break; // blok kedua (konsolidasi)
+        out.push(o);
+        continue;
+      }
+      var npp = rapikanNpp(o.npp);
+      if (npp) {
+        o.npp = npp;
+        o.div = rapikanDiv(o.div);
+        out.push(o);
+        prev = o;
+        continue;
+      }
+      var isi = row.filter(function (x) { return String(x || '').trim() !== ''; });
+      if (!isi.length) { prev = null; continue; }
+      var adaTitikDua = isi.some(function (x) { return String(x).indexOf(':') >= 0 || /^-/.test(String(x).trim()); });
+      if (prev && an.jenis === 'DATA_BU' && !adaTitikDua) {
+        ['nama', 'nama_ilo', 'alamat', 'pic_nama', 'pic_jabatan'].forEach(function (k) {
+          if (o[k]) prev[k] = (prev[k] ? prev[k] + ' ' : '') + o[k];
+        });
+        if (o.pic_email) prev.pic_email = (prev.pic_email || '') + o.pic_email;
+      } else {
+        prev = null;
+      }
+    }
+    return out;
+  }
+
+  function tentukanPeriode(an) {
+    var t = an.judulTeks || '', m, cetak = '';
+    m = t.match(/(?:tanggal cetak|tgl\.? cetak|tanggal|tgl)\s*:?\s*(\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{2,4})/i);
+    if (m) cetak = keTanggal(m[1]);
+    if (!cetak) {
+      m = t.match(/periode\s*:?\s*(\d{1,2}[\-\/\. ][a-z]{3}[a-z]*[\-\/\. ]\d{2,4})/i);
+      if (m) cetak = keTanggal(m[1]);
+    }
+    if (!cetak) {
+      var f = an.namaFile || '';
+      m = f.match(/((?:19|20)\d{2})[\-_\.]?(0[1-9]|1[0-2])[\-_\.]?([0-2]\d|3[01])/);
+      if (m) cetak = ymd(m[1], m[2], m[3]);
+      else if ((m = f.match(/([0-2]\d|3[01])[\-_\.](0[1-9]|1[0-2])[\-_\.]((?:19|20)\d{2})/))) cetak = ymd(m[3], m[2], m[1]);
+    }
+    var dariJudul = !!cetak;
+    var kini = CFG.hariIni();
+    if (!cetak || cetak > kini) cetak = kini;
+    var lap = '';
+    m = t.match(/periode\s*:?\s*(\d{1,2}[\-\/]\d{4})(?!\d)/i);
+    if (m) lap = keBlth(m[1]);
+    var pembina = '', namaPembina = '';
+    m = t.match(/pembina\s*:?\s*([A-Z]{2}\d{6})(?:\s*-\s*([A-Za-z][A-Za-z .,'\-]+))?/i);
+    if (m) { pembina = m[1].toUpperCase(); namaPembina = m[2] ? judulKata(m[2].replace(/\s{2,}.*$/, '')) : ''; }
+    return { tanggal: cetak, dariJudul: dariJudul, laporan: lap, pembina: pembina, namaPembina: namaPembina };
+  }
+
+  function cekPosisi(jenis, data) {
+    var uji = {
+      ITW_ITB: function (o) { return keBlth(o.periode_nilai) && keYT(o.itw) && keYT(o.itb); },
+      MONITORING: function (o) { return (!o.blth_posting || keBlth(o.blth_posting)) && (!o.tgl_terima || keTanggal(o.tgl_terima)) && /^(B|Mn|K|Mi|MI|)$/.test(String(o.skala).trim()); },
+      DATA_BU: function (o) { return keAngka(o.total_upah) !== null && (!o.blth_iuran || keBlth(o.blth_iuran)); },
+      KARTU_IURAN: function (o) { return keTanggal(o.tgl_bayar) && keAngka(o.total_iuran) !== null; },
+      KPI084: function (o) { return keAngka(o.pk_itw) !== null && keAngka(o.mig_itw) !== null; },
+      KPI085: function (o) { return kelasDariTeks(o.kelas_lalu) && /^(YA|TIDAK|Y|T)$/i.test(String(o.migrasi).trim()); }
+    }[jenis];
+    if (!uji) return;
+    var cocok = data.filter(uji).length;
+    if (cocok < data.length * 0.9) {
+      throw new Error('Judul kolom tidak dikenali dan isi kolom tidak sesuai urutan ' + NAMA_LAPORAN[jenis] + ' (' + cocok + ' dari ' + data.length +
+        ' baris cocok).' + (CFG.saranPemetaan ? ' Tambahkan judul kolom yang dipakai file ini di tab PEMETAAN.' : ''));
+    }
+  }
+
+  function ambilKpi084(grid) {
+    var kunci = ['pk_itw', 'pk_lancar', 'pk_kurang_lancar', 'pk_diragukan', 'pk_macet', 'mig_itw', 'mig_lancar', 'mig_kurang_lancar', 'mig_diragukan',
+      'cap_itw', 'cap_lancar', 'cap_kurang_lancar', 'cap_diragukan', 'rata_itw', 'rata_lancar', 'rata_kurang_lancar', 'rata_diragukan', 'bobot', 'skor'];
+    var out = [], lihat = {};
+    grid.forEach(function (row) {
+      for (var c = 0; c < row.length; c++) {
+        var x = norm(row[c]);
+        if (!/^[a-z]{3,9}$/.test(x) || !BULAN_SINGKAT[x.slice(0, 3)] || !BULAN_KPI.test(x)) continue;
+        var angka = [];
+        for (var d = c + 1; d < row.length && angka.length < kunci.length; d++) {
+          var s = String(row[d] === undefined ? '' : row[d]).trim();
+          if (!s) continue;
+          var a = keAngka(s, true);
+          if (a === null) { angka = null; break; }
+          angka.push(s);
+        }
+        if (!angka || angka.length < 9) continue;
+        var b = x.slice(0, 3);
+        if (lihat[b]) return; // blok kedua (konsolidasi) sama isinya
+        lihat[b] = true;
+        var o = { bulan: x };
+        kunci.forEach(function (k, i) { o[k] = angka[i] === undefined ? '' : angka[i]; });
+        out.push(o);
+        return;
+      }
+    });
+    return out;
+  }
+
+  function bacaRekapItw(grid) {
+    for (var r = 0; r < grid.length; r++) {
+      var row = grid[r].map(norm);
+      if (row.indexOf('jml itw') >= 0 || row.indexOf('jumlah itw') >= 0) {
+        for (var k = r + 1; k < Math.min(grid.length, r + 5); k++) {
+          var angka = [];
+          grid[k].forEach(function (x) {
+            var s = String(x || '').trim();
+            if (!s || s.indexOf('%') >= 0) return;
+            var a = keAngka(s);
+            if (a !== null) angka.push(a);
+          });
+          if (angka.length >= 4) return { aktif: angka[0], itw: angka[1], target: angka[2], itb: angka[3] };
+        }
+      }
+    }
+    return null;
+  }
+  /* ---------------- pemetaan judul kolom (bawaan + tab PEMETAAN) ---------------- */
+
+  var _PEMETAAN = null;
+  function pemetaan(lap) {
+    if (!_PEMETAAN) {
+      var p = {};
+      Object.keys(DEF_PEMETAAN).forEach(function (l) {
+        p[l] = DEF_PEMETAAN[l].map(function (d) { return { kolom: d[0], alias: d[1].split('|'), wajib: d[2] === 'Ya' }; });
+      });
+      var tambahan = [];
+      try { tambahan = CFG.tambahan() || []; } catch (e) { tambahan = []; }
+      tambahan.forEach(function (o) {
+        var l = String(o.laporan).trim(), k = String(o.kolom_lensa).trim();
+        if (!p[l] || !k) return;
+        var alias = String(o.judul_di_laporan || '').split('|').map(function (x) { return x.trim(); }).filter(String);
+        var ada = null;
+        p[l].forEach(function (d) { if (d.kolom === k) ada = d; });
+        if (ada) {
+          // alias dari tab PEMETAAN didahulukan, alias bawaan tetap jadi cadangan
+          ada.alias = alias.concat(ada.alias.filter(function (a) { return alias.indexOf(a) < 0; }));
+          ada.wajib = String(o.wajib).trim() === 'Ya' || ada.wajib;
+        } else if (alias.length) {
+          p[l].push({ kolom: k, alias: alias, wajib: String(o.wajib).trim() === 'Ya' });
+        }
+      });
+      _PEMETAAN = p;
+    }
+    return _PEMETAAN[lap] || [];
+  }
+
+  /* ---------------- SPPG ---------------- */
+
+  /** Nama badan usaha program Makan Bergizi (Satuan Pelayanan Pemenuhan Gizi). */
+  function adalahSppg(nama) {
+    var n = ' ' + String(nama || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ') + ' ';
+    return / SPPG |PEMENUHAN GIZI/.test(n);
+  }
+
+  /* ---------------- urai utuh ---------------- */
+
+  /** grid (baris × sel teks) → { an, peta, data, per, rekap }. Galat bila jenis/kolom tidak dikenali. */
+  function urai(grid, namaFile) {
+    var an = analisaGrid(grid, namaFile);
+    var peta = an.jenis === 'KPI084' ? {} : petakanKolom(an, grid);
+    var data = an.jenis === 'KPI084' ? ambilKpi084(grid) : ambilBaris(an, peta, grid);
+    if (!data.length) throw new Error('Tidak ada baris data yang terbaca.');
+    if (an.posisi) cekPosisi(an.jenis, data);
+    return { an: an, peta: peta, data: data, per: tentukanPeriode(an), rekap: an.jenis === 'ITW_ITB' ? bacaRekapItw(grid) : null, namaFile: namaFile || '' };
+  }
+  function uraiTeks(teks, namaFile) { return urai(uraiCsv(teks, deteksiPemisah(teks)), namaFile); }
+
+  /* ---------------- laporan ringkas (dikirim ke Gudang) ---------------- */
+
+  /** Jenis yang disimpan di Gudang Laporan KC (Kartu Iuran tetap di LENSA; Status PK hanya Monitor). */
+  var GUDANG = { ITW_ITB: true, MONITORING: true, DATA_BU: true, KPI084: true, KPI085: true };
+  var MAKS_JUDUL_TEKS = 4000;
+
+  /** Hasil urai → laporan ringkas: hanya kolom yang terbaca, nilai teks apa adanya. */
+  function ringkas(h) {
+    var kolom = Object.keys(h.peta), nPeta = kolom.length;
+    h.data.forEach(function (o) { Object.keys(o).forEach(function (k) { if (kolom.indexOf(k) < 0) kolom.push(k); }); });
+    var lr = {
+      v: 1, jenis: h.an.jenis, nama_file: String(h.namaFile || h.an.namaFile || ''),
+      per: { tanggal: h.per.tanggal || '', laporan: h.per.laporan || '', pembina: h.per.pembina || '', namaPembina: h.per.namaPembina || '', dariJudul: !!h.per.dariJudul },
+      kolom: kolom, nPeta: nPeta,
+      judul: kolom.map(function (k) { return h.peta[k] !== undefined ? String(h.an.gabung[h.peta[k]] || '') : ''; }),
+      baris: h.data.map(function (o) { return kolom.map(function (k) { return o[k] === undefined || o[k] === null ? '' : String(o[k]); }); }),
+      posisi: !!h.an.posisi, menurutIsi: !!h.an.menurutIsi,
+      judulTeks: String(h.an.judulTeks || '').slice(0, MAKS_JUDUL_TEKS), rekap: h.rekap || null
+    };
+    lr.pembina = pembinaLaporan(lr);
+    lr.sidik = sidik(lr);
+    return lr;
+  }
+
+  /** Laporan ringkas → bentuk yang sama dengan hasil urai (an, peta, data, per, rekap). */
+  function buka(lr) {
+    var peta = {}, gabung = [];
+    lr.kolom.forEach(function (k, i) { if (i < (lr.nPeta === undefined ? lr.kolom.length : lr.nPeta)) peta[k] = i; gabung.push(String((lr.judul || [])[i] || '')); });
+    var data = (lr.baris || []).map(function (r) {
+      var o = {};
+      lr.kolom.forEach(function (k, i) { o[k] = r[i] === undefined || r[i] === null ? '' : String(r[i]); });
+      return o;
+    });
+    var an = { jenis: lr.jenis, gabung: gabung, judulTeks: lr.judulTeks || '', namaFile: lr.nama_file || '', posisi: !!lr.posisi, menurutIsi: !!lr.menurutIsi, mulai: 0, lebar: lr.kolom.length, ringkas: true };
+    var p = lr.per || {};
+    return { an: an, peta: lr.jenis === 'KPI084' ? {} : peta, data: data, rekap: lr.rekap || null, namaFile: lr.nama_file || '',
+      per: { tanggal: p.tanggal || '', laporan: p.laporan || '', pembina: p.pembina || '', namaPembina: p.namaPembina || '', dariJudul: !!p.dariJudul } };
+  }
+
+  /** Pembina laporan: dari judul, atau satu-satunya kode di kolom pembina; 'SEMUA' bila beberapa pembina. */
+  function pembinaLaporan(lr) {
+    if (lr.per && lr.per.pembina) return lr.per.pembina;
+    var i = lr.kolom.indexOf('pembina'), kode = {};
+    if (i < 0 || lr.jenis === 'KPI085') return lr.jenis === 'KPI084' || lr.jenis === 'KPI085' ? 'KANTOR' : '';
+    (lr.baris || []).forEach(function (r) { var m = String(r[i] || '').toUpperCase().match(/[A-Z]{2}\d{6}/); if (m) kode[m[0]] = true; });
+    var k = Object.keys(kode);
+    return k.length === 1 ? k[0] : (k.length > 1 ? 'SEMUA' : '');
+  }
+
+  /** Laporan ringkas → grid sederhana yang dikenali pengurai lama (untuk Monitor SPPG ≤ 1.5 lewat jembatan). */
+  function keGrid(lr) {
+    var def = {};
+    (DEF_PEMETAAN[lr.jenis] || []).forEach(function (d) { def[d[0]] = d[1].split('|')[0].replace(/#\d+$/, '').replace(/\*$/, ''); });
+    var g = String(lr.judulTeks || '').split('\n').filter(function (t) { return /\S/.test(t); }).slice(0, 8).map(function (t) { return [t]; });
+    g.push(lr.kolom.map(function (k) { return def[k] || k.replace(/_/g, ' '); }));
+    (lr.baris || []).forEach(function (r) { g.push(r.slice()); });
+    return g;
+  }
+
+  /** Sidik isi (penolak unggahan ganda): sama bila jenis, tanggal data, pembina, dan semua baris sama. */
+  function sidik(lr) {
+    var s = JSON.stringify([lr.jenis, (lr.per || {}).tanggal, (lr.per || {}).laporan, (lr.per || {}).pembina, lr.kolom, lr.baris]);
+    return hash(s, 1) + hash(s, 7);
+  }
+  /** Hash 53-bit (cyrb53) → 14 karakter heksa. */
+  function hash(s, benih) {
+    var h1 = 0xdeadbeef ^ (benih || 0), h2 = 0x41c6ce57 ^ (benih || 0);
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    var n = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+    return ('00000000000000' + n.toString(16)).slice(-14);
+  }
+
+  /** Laporan ringkas kiriman perangkat diperiksa & dirapikan sebelum disimpan (sidik & pembina dihitung ulang). */
+  function periksa(x) {
+    if (!x || typeof x !== 'object') throw new Error('Laporan kosong.');
+    if (!NAMA_LAPORAN[x.jenis]) throw new Error('Jenis laporan tidak dikenal: ' + String(x.jenis).slice(0, 40));
+    var kolom = x.kolom;
+    if (!Array.isArray(kolom) || !kolom.length || kolom.length > 60 || kolom.some(function (k) { return typeof k !== 'string' || !/^[a-z0-9_]{1,40}$/.test(k); })) throw new Error('Kolom laporan tidak sah.');
+    if (!Array.isArray(x.baris) || !x.baris.length || x.baris.length > 50000) throw new Error('Baris laporan kosong atau terlalu banyak.');
+    var teks = function (v, n) { return v === null || v === undefined ? '' : String(v).slice(0, n || 1000); };
+    var baris = x.baris.map(function (r) {
+      if (!Array.isArray(r) || r.length !== kolom.length) throw new Error('Baris laporan tidak sesuai kolom.');
+      return r.map(function (v) { if (v !== null && typeof v === 'object') throw new Error('Isi sel tidak sah.'); return teks(v); });
+    });
+    var p = x.per || {}, rk = x.rekap && typeof x.rekap === 'object' ? x.rekap : null, rekap = null;
+    if (rk) { rekap = {}; ['aktif', 'itw', 'target', 'itb'].forEach(function (k) { rekap[k] = Number(rk[k]) || 0; }); }
+    var lr = {
+      v: 1, jenis: x.jenis, nama_file: teks(x.nama_file || 'laporan', 200),
+      per: { tanggal: /^\d{4}-\d{2}-\d{2}$/.test(p.tanggal) ? p.tanggal : '', laporan: /^\d{4}-\d{2}$/.test(p.laporan) ? p.laporan : '', pembina: /^[A-Z]{2}\d{6}$/.test(p.pembina) ? p.pembina : '', namaPembina: teks(p.namaPembina, 80), dariJudul: !!p.dariJudul },
+      kolom: kolom.slice(), nPeta: Math.max(0, Math.min(kolom.length, Number(x.nPeta === undefined ? kolom.length : x.nPeta) || 0)),
+      judul: kolom.map(function (k, i) { return teks((x.judul || [])[i], 200); }),
+      baris: baris, posisi: !!x.posisi, menurutIsi: !!x.menurutIsi, judulTeks: teks(x.judulTeks, MAKS_JUDUL_TEKS), rekap: rekap
+    };
+    if (!lr.per.tanggal) throw new Error('Tanggal data laporan tidak ada.');
+    lr.pembina = pembinaLaporan(lr);
+    lr.sidik = sidik(lr);
+    return lr;
+  }
+
+  /** Kunci penggantian: laporan jenis + tanggal + pembina (atau nama file) yang sama menggantikan yang lama. */
+  function kunciLaporan(lr) { return lr.jenis + '|' + ((lr.per || {}).tanggal || '') + '|' + (lr.pembina || (lr.per || {}).pembina || lr.nama_file || ''); }
+
+  return {
+    VERSI: VERSI, pasang: pasang, lupakan: lupakan, CFG: CFG,
+    DEF_PEMETAAN: DEF_PEMETAAN, URUTAN_KOLOM: URUTAN_KOLOM, NAMA_LAPORAN: NAMA_LAPORAN, BULAN_SINGKAT: BULAN_SINGKAT, BULAN_KPI: BULAN_KPI, GUDANG: GUDANG,
+    uraiCsv: uraiCsv, deteksiPemisah: deteksiPemisah, aliasSemua: aliasSemua, pemetaan: pemetaan, analisaGrid: analisaGrid, tebakJenis: tebakJenis,
+    cariKolom: cariKolom, petakanKolom: petakanKolom, petakanJudul: petakanJudul, petakanIsi: petakanIsi, ambilBaris: ambilBaris, ambilKpi084: ambilKpi084,
+    tentukanPeriode: tentukanPeriode, cekPosisi: cekPosisi, bacaRekapItw: bacaRekapItw,
+    urai: urai, uraiTeks: uraiTeks, ringkas: ringkas, buka: buka, periksa: periksa, keGrid: keGrid, sidik: sidik, hash: hash, pembinaLaporan: pembinaLaporan, kunciLaporan: kunciLaporan,
+    adalahSppg: adalahSppg, norm: norm, keAngka: keAngka, keTanggal: keTanggal, keBlth: keBlth, keYT: keYT, rapikanNpp: rapikanNpp, rapikanDiv: rapikanDiv,
+    rusakExcel: rusakExcel, kelasDariTeks: kelasDariTeks, judulKata: judulKata
+  };
+})();
 /* ======================================================================
  *  KIT LENSA Suite · redaksi.js 1.0 — penyusun pesan WhatsApp bersama.
  *  Dipakai di: mesin LENSA (Apps Script dan perangkat), aplikasi LENSA PK, Monitor SPPG.
@@ -1441,7 +2343,7 @@ var CSS_PESAN_WA = "*{box-sizing:border-box}\n.modul-wa{font:15px/1.45 system-ui
  * ==========================================================================
  */
 
-var VERSI = '1.22';
+var VERSI = '1.23';
 var TZ = 'Asia/Jakarta';
 var _HARI_INI_UJI = null; // khusus pengujian; biarkan null
 
@@ -1644,113 +2546,12 @@ var TEMPLAT_LAMA = {
 var DEF_WILAYAH = ['Batumarmar', 'Galis', 'Kadur', 'Larangan', 'Pademawu', 'Pakong', 'Palengaan', 'Pamekasan',
   'Pasean', 'Pegantenan', 'Proppo', 'Tlanakan', 'Waru'];
 
-// Pemetaan judul kolom CSV → kolom LENSA. Bisa ditambah di tab PEMETAAN tanpa mengubah skrip.
-var DEF_PEMETAAN = {
-  DATA_BU: [
-    ['npp', 'npp', 'Ya'],
-    ['div', 'div|divisi', ''],
-    ['nama', 'nama pemberi kerja badan usaha|pemberi kerja badan usaha|nama badan usaha|nama perusahaan|nama pk|nama pemberi kerja', 'Ya'],
-    ['blth_keps', 'blth keps|keps awal|keps', ''],
-    ['blth_na', 'blth na', ''],
-    ['kategori', 'kategori pk bu|kategori', ''],
-    ['rate_jkk', 'rate jkk|rate', ''],
-    ['kode_ilo', 'kode ilo', ''],
-    ['nama_ilo', 'nama ilo', ''],
-    ['total_upah', 'total upah', 'Ya'],
-    ['blth_iuran', 'iuran trakhir blth|iuran terakhir blth|blth iuran|blth', ''],
-    ['jumlah_iuran', 'iuran trakhir jumlah|iuran terakhir jumlah|jumlah iuran|jumlah', ''],
-    ['alamat', 'alamat', 'Ya'],
-    ['kabupaten', 'kabupaten|kab kota|kota', ''],
-    ['kode_area', 'kode area', ''],
-    ['telp', 'no telp|telp|telepon|no telepon', ''],
-    ['pic_nama', 'data pic nama|nama pic|pic nama|nama', ''],
-    ['pic_jabatan', 'data pic jabatan|jabatan pic|pic jabatan|jabatan', ''],
-    ['pic_hp', 'data pic no hp|no hp|hp|handphone|no handphone', ''],
-    ['pic_email', 'data pic email|email|e mail', '']
-  ],
-  MONITORING: [
-    ['npp', 'npp', 'Ya'],
-    ['div', 'div|divisi', ''],
-    ['nama', 'pemberi kerja badan usaha|nama pemberi kerja badan usaha|nama badan usaha|nama perusahaan|nama pk|nama', 'Ya'],
-    ['keps_awal', 'keps awal|kepesertaan awal', ''],
-    ['keps_jp', 'keps jp|kepesertaan jp', ''],
-    ['blth_na', 'blth na|na blth', ''],
-    ['skala', 'skala usaha|skala', ''],
-    ['prog', 'prog|program', ''],
-    ['tk_tambah', 'penambahan|tk tambah|tk masuk', ''],
-    ['tk_kurang', 'pengurangan|tk kurang|tk keluar', ''],
-    ['tk_aktif', 'tk aktif|aktif', 'Ya'],
-    ['tk_na', 'tk na|tk nonaktif|tk non aktif', ''],
-    ['tk_jumlah', 'jumlah tk|tk jumlah|jumlah', ''],
-    ['iuran_berjalan', 'total iuran berjalan|iuran berjalan|total iuran', ''],
-    ['tgl_terima', 'tgl penerimaan iuran terakhir|tgl penerimaan iuran terkahir|tgl penerimaan|tanggal penerimaan|tgl terima|penerimaan', 'Ya'],
-    ['blth_entri', 'entri dutk blth|blth entri|entri dutk|blth#1', ''],
-    ['blth_posting', 'posting terakhir blth|blth posting|posting terakhir|blth#2', 'Ya'],
-    ['nilai_posting', 'nilai posting|posting terakhir nilai posting', ''],
-    ['sipp_prs', 'sipp prs|sipp', ''],
-    ['itw', 'itw', ''],
-    ['ibr_ijt', 'ijt|nilai ibr ijt|ibr ijt', ''],
-    ['ibr_idm', 'idm|nilai ibr idm|ibr idm', '']
-  ],
-  ITW_ITB: [
-    ['npp', 'npp', 'Ya'],
-    ['div', 'div|divisi', ''],
-    ['nama', 'nama pemberi kerja badan usaha|pemberi kerja badan usaha|nama badan usaha|nama perusahaan|nama pk|nama', 'Ya'],
-    ['pembina', 'pembina', ''],
-    ['blth_posting', 'itrf blth|blth itrf|blth posting|blth', 'Ya'],
-    ['iuran_terakhir', 'itrf nilai rp|itrf nilai|nilai itrf|iuran terakhir|nilai rp#1', 'Ya'],
-    ['periode_nilai', 'periode penilaian|periode', 'Ya'],
-    ['bln_belum_posting', 'jml bln blm posting|jumlah bulan belum posting|bln blm posting|blm posting|belum posting', 'Ya'],
-    ['ibr_nilai', 'kecukupan ibr nilai rp|ibr nilai rp|ibr nilai|nilai ibr|nilai rp#2', ''],
-    ['ibr_bulan', 'kecukupan ibr jml bulan|ibr jml bulan|jml bulan|jumlah bulan|ibr bulan', 'Ya'],
-    ['koef', 'koef|koefisien', 'Ya'],
-    ['itw', 'itw', 'Ya'],
-    ['itb', 'itb', 'Ya']
-  ],
-  KARTU_IURAN: [
-    ['npp', 'npp', ''],
-    ['blth_iuran', 'blth iuran|bulan iuran', 'Ya'],
-    ['tgl_bayar', 'tanggal bayar|tgl bayar|tanggal pembayaran', 'Ya'],
-    ['jht', 'jht', ''], ['jkk', 'jkk', ''], ['jkm', 'jkm', ''], ['jp', 'jp', ''], ['jkp', 'jkp', ''],
-    ['denda', 'denda', ''],
-    ['total_iuran', 'total iuran', 'Ya'],
-    ['total_upah', 'total upah tk|total upah', ''],
-    ['jumlah_tk', 'jumlah tk|jml tk', '']
-  ],
-  KPI084: [
-    ['bulan', 'bulan', 'Ya'],
-    ['pk_itw', 'pkbu itw', 'Ya'], ['pk_lancar', 'pkbu lancar', 'Ya'], ['pk_kurang_lancar', 'pkbu kurang lancar|pkbu kurang', 'Ya'],
-    ['pk_diragukan', 'pkbu diragukan', 'Ya'], ['pk_macet', 'pkbu macet', 'Ya'],
-    ['mig_itw', 'itw ke menunggak#1', 'Ya'], ['mig_lancar', 'lancar ke kurang lancar#1', 'Ya'],
-    ['mig_kurang_lancar', 'kurang lancar ke diragukan#1', 'Ya'], ['mig_diragukan', 'diragukan ke macet#1', 'Ya'],
-    ['cap_itw', 'itw ke menunggak#2', ''], ['cap_lancar', 'lancar ke kurang lancar#2', ''],
-    ['cap_kurang_lancar', 'kurang lancar ke diragukan#2', ''], ['cap_diragukan', 'diragukan ke macet#2', ''],
-    ['rata_itw', 'itw ke menunggak#3', ''], ['rata_lancar', 'lancar ke kurang lancar#3', ''],
-    ['rata_kurang_lancar', 'kurang lancar ke diragukan#3', ''], ['rata_diragukan', 'diragukan ke macet#3', ''],
-    ['bobot', 'bobot', ''], ['skor', 'skor', '']
-  ],
-  KPI085: [
-    ['npp', 'npp', 'Ya'],
-    ['pembina', 'nama pembina|pembina', 'Ya'],
-    ['nama', 'nama perusahan|nama perusahaan|nama pemberi kerja', ''],
-    ['kelas_lalu', 'piutang*#1', 'Ya'],
-    ['kelas_ini', 'piutang*#2', 'Ya'],
-    ['migrasi', 'migrasi', 'Ya']
-  ]
-};
-
-// Urutan kolom seperti cetakan laporan; dipakai bila judul kolom tidak terbaca tetapi jumlah kolom sama.
-var URUTAN_KOLOM = {
-  ITW_ITB: ['no', 'kci', 'kcp', 'npp', 'div', 'nama', 'pembina', 'blth_posting', 'iuran_terakhir', 'periode_nilai', 'bln_belum_posting', 'ibr_nilai', 'ibr_bulan', 'koef', 'itw', 'itb'],
-  MONITORING: ['no', 'npp', 'div', 'nama', 'keps_awal', 'keps_jp', 'blth_na', 'skala', 'prog', 'tk_tambah', 'tk_kurang', 'tk_aktif', 'tk_na', 'tk_jumlah', 'iuran_berjalan', 'tgl_terima', 'blth_entri', 'blth_posting', 'nilai_posting', 'sipp_prs', 'itw', 'ibr_ijt', 'ibr_idm'],
-  DATA_BU: ['no', 'npp', 'div', 'nama', 'blth_keps', 'blth_na', 'kategori', 'rate_jkk', 'kode_ilo', 'nama_ilo', 'total_upah', 'blth_iuran', 'jumlah_iuran', 'alamat', 'kabupaten', 'kode_area', 'telp', 'pic_nama', 'pic_jabatan', 'pic_hp', 'pic_email'],
-  KARTU_IURAN: ['no', 'blth_iuran', 'tgl_bayar', 'jht', 'jkk', 'jkm', 'jp', 'jkp', 'denda', 'total_iuran', 'total_upah', 'jumlah_tk'],
-  KPI084: ['no', 'bulan', 'pk_itw', 'pk_lancar', 'pk_kurang_lancar', 'pk_diragukan', 'pk_macet', 'mig_itw', 'mig_lancar', 'mig_kurang_lancar', 'mig_diragukan',
-    'cap_itw', 'cap_lancar', 'cap_kurang_lancar', 'cap_diragukan', 'rata_itw', 'rata_lancar', 'rata_kurang_lancar', 'rata_diragukan', 'bobot', 'skor'],
-  KPI085: ['no', 'pembina', 'npp', 'nama', 'kelas_lalu', 'kelas_ini', 'migrasi']
-};
-
-var NAMA_LAPORAN = { DATA_BU: 'Data Badan Usaha', MONITORING: 'Monitoring', ITW_ITB: 'ITW/ITB', KARTU_IURAN: 'Kartu Iuran', KPI084: 'KPI084 Rekap Migrasi Piutang', KPI085: 'KPI085 Detil Migrasi Piutang' };
+// 1.23 (LENSA Suite 2A): pengurai laporan pindah ke modul Impor bersama (kit/impor.js, KitImpor), dipakai juga Monitor SPPG & Hub.
+// Pemetaan judul kolom CSV → kolom LENSA tetap bisa ditambah di tab PEMETAAN tanpa mengubah skrip.
+var DEF_PEMETAAN = KitImpor.DEF_PEMETAAN;
+var URUTAN_KOLOM = KitImpor.URUTAN_KOLOM;
+var NAMA_LAPORAN = KitImpor.NAMA_LAPORAN;
+var JENIS_LENSA = ['DATA_BU', 'MONITORING', 'ITW_ITB', 'KARTU_IURAN', 'KPI084', 'KPI085'];
 var PRIORITAS_IMPOR = { DATA_BU: 1, MONITORING: 2, ITW_ITB: 3, KARTU_IURAN: 4, KPI084: 5, KPI085: 6 };
 var KUNCI_USANG = ['kpi_mig_kecualikan_non_asn'];
 
@@ -2461,7 +3262,7 @@ function isiAwal_() {
   var adaP = {};
   bacaTab_('PEMETAAN').data.forEach(function (o) { adaP[o.laporan + '|' + o.kolom_lensa] = true; });
   var bp = [];
-  Object.keys(DEF_PEMETAAN).forEach(function (lap) {
+  JENIS_LENSA.forEach(function (lap) {
     DEF_PEMETAAN[lap].forEach(function (d) {
       if (!adaP[lap + '|' + d[0]]) bp.push({ laporan: lap, kolom_lensa: d[0], judul_di_laporan: d[1], wajib: d[2] });
     });
@@ -2571,454 +3372,24 @@ function siapkanDatabaseDiam_() {
 
 /* ============================ IMPOR ============================ */
 
-/** Pengurai CSV sederhana yang tahan tanda kutip, koma di dalam angka, dan baris CRLF. */
-function uraiCsv_(teks, pemisah) {
-  teks = String(teks || '').replace(/^\uFEFF/, '');
-  var baris = [], sel = '', row = [], kutip = false, i = 0, n = teks.length;
-  while (i < n) {
-    var ch = teks.charAt(i);
-    if (kutip) {
-      if (ch === '"') {
-        if (teks.charAt(i + 1) === '"') { sel += '"'; i += 2; continue; }
-        kutip = false; i++; continue;
-      }
-      sel += ch; i++; continue;
-    }
-    if (ch === '"' && sel === '') { kutip = true; i++; continue; }
-    if (ch === pemisah) { row.push(sel); sel = ''; i++; continue; }
-    if (ch === '\r') { i++; continue; }
-    if (ch === '\n') { row.push(sel); baris.push(row); row = []; sel = ''; i++; continue; }
-    sel += ch; i++;
-  }
-  if (sel !== '' || row.length) { row.push(sel); baris.push(row); }
-  return baris.map(function (r) { return r.map(function (x) { return String(x).trim(); }); });
-}
-
-function deteksiPemisah_(teks) {
-  var contoh = String(teks || '').split(/\r?\n/).slice(0, 60).join('\n');
-  var terbaik = ',', skor = -1;
-  [',', ';', '\t', '|'].forEach(function (p) {
-    var g = uraiCsv_(contoh, p);
-    var lebar = g.map(function (r) { return r.length; }).sort(function (a, b) { return b - a; });
-    var s = lebar.length ? lebar[Math.floor(lebar.length / 4)] : 0;
-    if (s > skor) { skor = s; terbaik = p; }
-  });
-  return terbaik;
-}
-
-function aliasSemua_() {
-  var set = {};
-  Object.keys(DEF_PEMETAAN).forEach(function (lap) {
-    pemetaan_(lap).forEach(function (d) {
-      d.alias.forEach(function (a) { set[norm_(a.replace(/#\d+$/, ''))] = true; });
-    });
-  });
-  delete set[''];
-  return set;
-}
-
-var _PEMETAAN = null;
-function pemetaan_(lap) {
-  if (!_PEMETAAN) {
-    _PEMETAAN = {};
-    Object.keys(DEF_PEMETAAN).forEach(function (l) {
-      _PEMETAAN[l] = DEF_PEMETAAN[l].map(function (d) { return { kolom: d[0], alias: d[1].split('|'), wajib: d[2] === 'Ya' }; });
-    });
-    try {
-      bacaTab_('PEMETAAN').data.forEach(function (o) {
-        var l = String(o.laporan).trim(), k = String(o.kolom_lensa).trim();
-        if (!_PEMETAAN[l] || !k) return;
-        var alias = String(o.judul_di_laporan || '').split('|').map(function (x) { return x.trim(); }).filter(String);
-        var ada = null;
-        _PEMETAAN[l].forEach(function (d) { if (d.kolom === k) ada = d; });
-        if (ada) {
-          // alias dari tab PEMETAAN didahulukan, alias bawaan tetap jadi cadangan
-          var gabung = alias.concat(ada.alias.filter(function (a) { return alias.indexOf(a) < 0; }));
-          ada.alias = gabung;
-          ada.wajib = String(o.wajib).trim() === 'Ya' || ada.wajib;
-        } else if (alias.length) {
-          _PEMETAAN[l].push({ kolom: k, alias: alias, wajib: String(o.wajib).trim() === 'Ya' });
-        }
-      });
-    } catch (e) { /* tab belum ada */ }
-  }
-  return _PEMETAAN[lap] || [];
-}
-
-function barisData_(row) {
-  var adaNpp = false, adaBlth = false, adaTgl = false, adaBulan = false, angka = 0;
-  for (var i = 0; i < row.length; i++) {
-    var x = String(row[i] || '').trim();
-    if (!x) continue;
-    if (/^(jan|feb|mar|apr|mei|may|jun|jul|agu|ags|aug|sep|okt|oct|nov|des|dec)$/i.test(x)) adaBulan = true;
-    if (keAngka_(x) !== null) angka++;
-    if (/^[A-Z]{2}\d{6}$/i.test(x)) adaNpp = true;
-    else if (/^\d{7,8}$/.test(x) && !/^(19|20)\d{2}(0[1-9]|1[0-2])([0-2]\d|3[01])$/.test(x)) adaNpp = true;
-    else if (/^\d{1,2}[\-\/]\d{4}$/.test(x)) adaBlth = true;
-    else if (/^\d{1,2}[\-\/]\d{1,2}[\-\/]\d{2,4}$/.test(x)) adaTgl = true;
-  }
-  return adaNpp || (adaBlth && adaTgl) || (adaBulan && angka >= 8);
-}
-
-function barisJudulKelompok_(row) {
-  var isi = row.filter(function (x) { return String(x || '').trim() !== ''; });
-  if (isi.length < 2) return false;
-  for (var i = 0; i < isi.length; i++) if (String(isi[i]).indexOf(':') >= 0) return false;
-  return true;
-}
-
-/** Menemukan baris judul kolom, awal data, dan jenis laporan. */
-function analisaGrid_(grid, namaFile) {
-  var semua = aliasSemua_();
-  var terbaik = -1, skorTerbaik = 0;
-  var batas = Math.min(grid.length, 80);
-  for (var r = 0; r < batas; r++) {
-    var skor = 0;
-    for (var c = 0; c < grid[r].length; c++) {
-      var h = norm_(grid[r][c]);
-      if (h && semua[h]) skor++;
-    }
-    if (skor > skorTerbaik) { skorTerbaik = skor; terbaik = r; }
-  }
-  if (skorTerbaik < 3) {
-    // judul kolom tidak dikenali: pakai baris tepat di atas data pertama, lalu andalkan urutan kolom
-    terbaik = -2;
-    for (var rr = 0; rr < batas; rr++) if (barisData_(grid[rr])) { terbaik = rr - 1; break; }
-    if (terbaik === -2) throw new Error('Judul kolom laporan tidak ditemukan dan tidak ada baris NPP. Pastikan file adalah CSV hasil ekspor laporan sistem.');
-  }
-
-  var mulai = -1;
-  for (var r2 = terbaik + 1; r2 < grid.length; r2++) {
-    if (barisData_(grid[r2])) { mulai = r2; break; }
-  }
-  if (mulai < 0) throw new Error('Tidak ada baris data (NPP) di bawah judul kolom.');
-
-  var atas = terbaik < 0 ? mulai : terbaik;
-  for (var k = 1; k <= 4 && terbaik >= 0 && terbaik - k >= 0; k++) {
-    if (barisJudulKelompok_(grid[terbaik - k])) atas = terbaik - k;
-    else break;
-  }
-  var lebar = 0;
-  for (var r3 = atas; r3 < Math.min(grid.length, mulai + 5); r3++) lebar = Math.max(lebar, grid[r3].length);
-  var bagian = [], gabung = [];
-  for (var c2 = 0; c2 < lebar; c2++) {
-    var p = [];
-    for (var r4 = atas; r4 < mulai; r4++) {
-      var t = norm_(grid[r4][c2]);
-      if (t) p.push(t);
-    }
-    bagian.push(p);
-    gabung.push(p.join(' '));
-  }
-  var dataPertama = grid[mulai], lebarData = 0;
-  for (var c3 = 0; c3 < dataPertama.length; c3++) if (String(dataPertama[c3]).trim() !== '') lebarData = c3 + 1;
-
-  // teks di luar tabel (judul atas dan catatan bawah) untuk tanggal cetak, periode, pembina
-  var luar = grid.slice(0, atas).map(function (x) { return x.join(' '); });
-  for (var r5 = mulai; r5 < grid.length; r5++) {
-    if (!barisData_(grid[r5])) luar.push(grid[r5].join(' '));
-  }
-  var an = {
-    kepala: terbaik, atas: atas, mulai: mulai, lebar: lebar, lebarData: lebarData,
-    bagian: bagian, gabung: gabung, judulTeks: luar.join('\n'), namaFile: namaFile || ''
-  };
-  an.jenis = tebakJenis_(gabung.join(' | '), namaFile);
-  return an;
-}
-
-function tebakJenis_(teks, namaFile) {
-  var t = ' ' + teks + ' ';
-  if (/pkbu itw/.test(t) && /menunggak/.test(t)) return 'KPI084';
-  if (/migrasi/.test(t) && /piutang/.test(t) && /pembina/.test(t)) return 'KPI085';
-  if (/ koef/.test(t) && / itb /.test(t)) return 'ITW_ITB';
-  if (/kecukupan ibr/.test(t) && /(blm posting|belum posting|penilaian)/.test(t)) return 'ITW_ITB';
-  if (/blth iuran/.test(t) && /(tanggal|tgl) bayar/.test(t)) return 'KARTU_IURAN';
-  if (/(penambahan|pengurangan)/.test(t) && /aktif/.test(t)) return 'MONITORING';
-  if (/(nama ilo|kode ilo|rate jkk)/.test(t)) return 'DATA_BU';
-  var f = String(namaFile || '').toLowerCase();
-  if (/kpi\s*_?084/.test(f)) return 'KPI084';
-  if (/kpi\s*_?085/.test(f)) return 'KPI085';
-  if (/itw|itb/.test(f)) return 'ITW_ITB';
-  if (/kartu/.test(f)) return 'KARTU_IURAN';
-  if (/monitor/.test(f)) return 'MONITORING';
-  if (/badan.?usaha|dbu|data.?bu/.test(f)) return 'DATA_BU';
-  throw new Error('Jenis laporan tidak dikenali dari judul kolom maupun nama file.');
-}
-
-/** Alias: "judul" (sama persis, lalu memuat kata), "judul#2" (kemunculan ke-2), "awalan*" (judul diawali kata itu). */
-function cariKolom_(an, alias, dipakai) {
-  var m = String(alias).match(/^(.*?)(\*)?(?:#(\d+))?$/);
-  var a = norm_(m[1]), awalan = !!m[2], ke = m[3] ? +m[3] : 1, berurut = !!m[3];
-  if (!a) return -1;
-  var cocok = [], c;
-  var sama = function (c) { return an.gabung[c] === a || an.bagian[c].indexOf(a) >= 0; };
-  var memuat = function (c) { return (' ' + an.gabung[c] + ' ').indexOf(' ' + a + ' ') >= 0; };
-  if (awalan) {
-    for (c = 0; c < an.lebar; c++) {
-      if (an.gabung[c].indexOf(a) === 0 || an.bagian[c].some(function (p) { return p.indexOf(a) === 0; })) cocok.push(c);
-    }
-    return cocok.length >= ke ? cocok[ke - 1] : -1;
-  }
-  // #n: kolom ke-n (urut kiri ke kanan) yang judulnya sama atau memuat alias
-  if (berurut) {
-    for (c = 0; c < an.lebar; c++) if (sama(c) || memuat(c)) cocok.push(c);
-    return cocok.length >= ke ? cocok[ke - 1] : -1;
-  }
-  for (c = 0; c < an.lebar; c++) {
-    if (dipakai[c]) continue;
-    if (sama(c)) cocok.push(c);
-  }
-  if (!cocok.length) {
-    for (c = 0; c < an.lebar; c++) {
-      if (dipakai[c]) continue;
-      if (memuat(c)) cocok.push(c);
-    }
-    cocok.sort(function (x, y) { return x - y; });
-  }
-  return cocok.length >= ke ? cocok[ke - 1] : -1;
-}
-
-/* ---- pemetaan menurut isi kolom (CSV dari Excel dengan sel gabungan) ---- */
-
-var TIPE_KOLOM = {
-  no: 'bulat', npp: 'npp', div: 'div', nama: 'teks', kci: 'kode', kcp: 'kode', pembina: 'pembina',
-  blth_keps: 'blth', blth_na: 'blth', kategori: 'teks', rate_jkk: 'desimal', kode_ilo: 'ilo', nama_ilo: 'teks',
-  total_upah: 'angka', blth_iuran: 'blth', jumlah_iuran: 'angka', alamat: 'teks', kabupaten: 'teks', kode_area: 'digit',
-  telp: 'digit', pic_nama: 'teks', pic_jabatan: 'teks', pic_hp: 'digit', pic_email: 'email',
-  blth_posting: 'blth', iuran_terakhir: 'angka', periode_nilai: 'blth', bln_belum_posting: 'bulat', ibr_nilai: 'angka',
-  ibr_bulan: 'bulat', koef: 'bulat', itw: 'yt', itb: 'yt',
-  keps_awal: 'blth', keps_jp: 'blth', skala: 'skala', prog: 'prog', tk_tambah: 'bulat', tk_kurang: 'bulat', tk_aktif: 'bulat',
-  tk_na: 'bulat', tk_jumlah: 'bulat', iuran_berjalan: 'angka', tgl_terima: 'tgl', blth_entri: 'blth', nilai_posting: 'angka',
-  sipp_prs: 'sipp', ibr_ijt: 'angka', ibr_idm: 'angka',
-  tgl_bayar: 'tgl', jht: 'angka', jkk: 'angka', jkm: 'angka', jp: 'angka', jkp: 'angka', denda: 'angka', total_iuran: 'angka',
-  jumlah_tk: 'bulat', kelas_lalu: 'kelas', kelas_ini: 'kelas', migrasi: 'yatidak'
-};
-
-// kolom yang di banyak laporan kosong seluruhnya: paling dulu dianggap tidak ada saat kolom isi lebih sedikit
-var SERING_KOSONG = { blth_na: 1, kategori: 1, keps_jp: 1, prog: 1, jkp: 1, denda: 1 };
-
-function cocokTipe_(tipe, x) {
-  switch (tipe) {
-    case 'bulat': return /^-?(\d{1,3}(,\d{3})+|\d+)$/.test(x);
-    case 'angka': return keAngka_(x) !== null;
-    case 'desimal': var a = keAngka_(x, true); return a !== null && a < 100;
-    case 'digit': return /^[\d\s\-\+\(\)\/]{3,}$/.test(x) || rusakExcel_(x);
-    case 'ilo': return /^\d{3,5}$/.test(x);
-    case 'blth': return !!keBlth_(x) && !keTanggal_(x) && !/^\d+$/.test(x);
-    case 'tgl': return !!keTanggal_(x);
-    case 'teks': return /[A-Za-z]{2,}/.test(x) && !keBlth_(x) && x.indexOf('@') < 0 && !/^(ya|tidak)$/i.test(x);
-    case 'email': return x.indexOf('@') > 0;
-    case 'npp': return !!rapikanNpp_(x);
-    case 'div': return /^\d{1,3}$/.test(x);
-    case 'kode': return /^[A-Z]\d{2}$/i.test(x);
-    case 'pembina': return /^[A-Z]{2}\d{6}/i.test(x) || (/[A-Za-z]{3,}/.test(x) && !keBlth_(x));
-    case 'yt': return /^(Y|T)$/i.test(x);
-    case 'yatidak': return /^(YA|TIDAK|Y|T)$/i.test(x);
-    case 'skala': return /^(B|Mn|K|Mi|MI|M)$/.test(x);
-    case 'prog': return /^\dP$/i.test(x);
-    case 'sipp': return /^(-|sipp|prs|sipp\/prs)$/i.test(x);
-    case 'kelas': return !!kelasDariTeks_(x);
-  }
-  return true;
-}
-
-/** Baris data contoh (baris ber-NPP / ber-BLTH) untuk menilai pemetaan. */
-function barisContoh_(an, grid) {
-  var out = [];
-  for (var r = an.mulai; r < grid.length && out.length < 150; r++) if (barisData_(grid[r])) out.push(grid[r]);
-  return out;
-}
-
-/** Nilai satu pemetaan: jumlah sel yang isinya sesuai tipe kolom, dan apakah kolom wajib terisi wajar. */
-function skorPeta_(jenis, peta, contoh) {
-  var def = pemetaan_(jenis), wajib = {};
-  def.forEach(function (d) { if (d.wajib) wajib[d.kolom] = true; });
-  var total = 0, ok = true, buruk = [];
-  Object.keys(peta).forEach(function (k) {
-    var tipe = TIPE_KOLOM[k];
-    if (!tipe) return;
-    var isi = 0, pas = 0;
-    contoh.forEach(function (row) {
-      var x = String(row[peta[k]] === undefined ? '' : row[peta[k]]).trim();
-      if (!x) return;
-      isi++;
-      if (cocokTipe_(tipe, x)) pas++;
-    });
-    total += pas - (isi - pas);
-    if (wajib[k] && (!isi || pas / isi < 0.8)) { ok = false; buruk.push(k); }
-  });
-  return { total: total, ok: ok, buruk: buruk };
-}
-
-/**
- * Pemetaan menurut isi: kolom yang benar-benar berisi data (di file Excel letaknya bergeser dari judulnya)
- * dipasangkan berurutan dengan urutan kolom laporan; kolom laporan yang kosong seluruhnya boleh terlewat.
- */
-function petakanIsi_(jenis, contoh) {
-  var urut = URUTAN_KOLOM[jenis];
-  if (!urut || !contoh.length) return null;
-  var lebar = 0;
-  contoh.forEach(function (r) { lebar = Math.max(lebar, r.length); });
-  var slot = [];
-  for (var c = 0; c < lebar; c++) {
-    if (contoh.some(function (r) { return String(r[c] === undefined ? '' : r[c]).trim() !== ''; })) slot.push(c);
-  }
-  var def = pemetaan_(jenis), wajib = {};
-  def.forEach(function (d) { if (d.wajib) wajib[d.kolom] = true; });
-  var nilai = {};
-  function skor(i, j) {
-    var key = i + '|' + j;
-    if (nilai[key] !== undefined) return nilai[key];
-    var tipe = TIPE_KOLOM[urut[i]], isi = 0, pas = 0;
-    contoh.forEach(function (r) {
-      var x = String(r[slot[j]] === undefined ? '' : r[slot[j]]).trim();
-      if (!x) return;
-      isi++;
-      if (!tipe || cocokTipe_(tipe, x)) pas++;
-    });
-    return (nilai[key] = isi ? pas / isi : 0);
-  }
-  var n = urut.length, m = slot.length, NEG = -1e9;
-  var dp = [], dari = [];
-  for (var i = 0; i <= n; i++) { dp.push([]); dari.push([]); for (var j = 0; j <= m; j++) { dp[i].push(NEG); dari[i].push(''); } }
-  dp[0][0] = 0;
-  for (i = 0; i <= n; i++) {
-    for (j = 0; j <= m; j++) {
-      var v = dp[i][j];
-      if (v === NEG) continue;
-      if (i < n && j < m) { var a = v + skor(i, j); if (a > dp[i + 1][j + 1]) { dp[i + 1][j + 1] = a; dari[i + 1][j + 1] = 'p'; } }
-      if (i < n) { var b = v - (wajib[urut[i]] ? 3 : SERING_KOSONG[urut[i]] ? 0.1 : 0.4); if (b > dp[i + 1][j]) { dp[i + 1][j] = b; dari[i + 1][j] = 'k'; } }
-      if (j < m) { var d = v - 0.6; if (d > dp[i][j + 1]) { dp[i][j + 1] = d; dari[i][j + 1] = 's'; } }
-    }
-  }
-  var peta = {};
-  i = n; j = m;
-  while (i > 0 || j > 0) {
-    var arah = dari[i][j];
-    if (arah === 'p') { peta[urut[i - 1]] = slot[j - 1]; i--; j--; }
-    else if (arah === 'k') i--;
-    else j--;
-  }
-  delete peta.no;
-  return peta;
-}
-
-function petakanKolom_(an, grid) {
-  var contoh = grid ? barisContoh_(an, grid) : [];
-  var judul = null, galatJudul = null;
-  try { judul = petakanJudul_(an); } catch (e) { galatJudul = e; }
-  if (!contoh.length || an.jenis === 'KPI084') {
-    if (galatJudul) throw galatJudul;
-    return judul;
-  }
-  var sJudul = judul ? skorPeta_(an.jenis, judul, contoh) : null;
-  var isi = petakanIsi_(an.jenis, contoh);
-  var sIsi = isi ? skorPeta_(an.jenis, isi, contoh) : null;
-  if (sJudul && sJudul.ok && (!sIsi || !sIsi.ok || sIsi.total <= sJudul.total * 1.05)) return judul;
-  if (sIsi && sIsi.ok) {
-    an.posisi = false;
-    an.menurutIsi = true;
-    return isi;
-  }
-  if (galatJudul) throw galatJudul;
-  throw new Error('Isi kolom tidak sesuai dengan laporan ' + NAMA_LAPORAN[an.jenis] + ' (kolom bermasalah: ' + ((sJudul && sJudul.buruk) || []).join(', ') +
-    '). Kirim baris judul kolom file ini ke pengembang, atau sesuaikan tab PEMETAAN.');
-}
-
-function petakanJudul_(an) {
-  var def = pemetaan_(an.jenis);
-  var peta = {}, dipakai = {};
-  def.forEach(function (d) {
-    var c = -1;
-    for (var i = 0; i < d.alias.length && c < 0; i++) c = cariKolom_(an, d.alias[i], dipakai);
-    if (c >= 0) { peta[d.kolom] = c; dipakai[c] = true; }
-  });
-  var kurang = def.filter(function (d) { return d.wajib && peta[d.kolom] === undefined; }).map(function (d) { return d.kolom; });
-  if (kurang.length) {
-    var urut = URUTAN_KOLOM[an.jenis];
-    if (urut && (an.lebarData === urut.length || an.lebar === urut.length)) {
-      peta = {};
-      urut.forEach(function (k, i) { peta[k] = i; });
-      kurang = [];
-      an.posisi = true;
-    }
-  }
-  if (kurang.length) {
-    var judul = an.gabung.filter(String).join(' | ');
-    throw new Error('Kolom wajib tidak ditemukan: ' + kurang.join(', ') + '. Judul kolom di file: ' + judul +
-      '. Tambahkan judul yang sesuai di tab PEMETAAN (kolom judul_di_laporan).');
-  }
-  return peta;
-}
-
-function ambilBaris_(an, peta, grid) {
-  var out = [], prev = null;
-  for (var r = an.mulai; r < grid.length; r++) {
-    var row = grid[r];
-    var o = {};
-    Object.keys(peta).forEach(function (k) {
-      var x = row[peta[k]];
-      o[k] = x === undefined || x === null ? '' : String(x).trim();
-    });
-    if (an.jenis === 'KARTU_IURAN') {
-      if (!/^\d/.test(o.blth_iuran) || !keBlth_(o.blth_iuran)) continue;
-      out.push(o);
-      continue;
-    }
-    if (an.jenis === 'KPI084') {
-      var bl = norm_(o.bulan);
-      if (!BULAN_SINGKAT[bl.slice(0, 3)] || !/^[a-z]+$/.test(bl)) continue;
-      if (out.some(function (x) { return norm_(x.bulan) === bl; })) break; // blok kedua (konsolidasi)
-      out.push(o);
-      continue;
-    }
-    var npp = rapikanNpp_(o.npp);
-    if (npp) {
-      o.npp = npp;
-      o.div = rapikanDiv_(o.div);
-      out.push(o);
-      prev = o;
-      continue;
-    }
-    var isi = row.filter(function (x) { return String(x || '').trim() !== ''; });
-    if (!isi.length) { prev = null; continue; }
-    var adaTitikDua = isi.some(function (x) { return String(x).indexOf(':') >= 0 || /^-/.test(String(x).trim()); });
-    if (prev && an.jenis === 'DATA_BU' && !adaTitikDua) {
-      ['nama', 'nama_ilo', 'alamat', 'pic_nama', 'pic_jabatan'].forEach(function (k) {
-        if (o[k]) prev[k] = (prev[k] ? prev[k] + ' ' : '') + o[k];
-      });
-      if (o.pic_email) prev.pic_email = (prev.pic_email || '') + o.pic_email;
-    } else {
-      prev = null;
-    }
-  }
-  return out;
-}
-
-function tentukanPeriode_(an) {
-  var t = an.judulTeks || '', m, cetak = '';
-  m = t.match(/(?:tanggal cetak|tgl\.? cetak|tanggal|tgl)\s*:?\s*(\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{2,4})/i);
-  if (m) cetak = keTanggal_(m[1]);
-  if (!cetak) {
-    m = t.match(/periode\s*:?\s*(\d{1,2}[\-\/\. ][a-z]{3}[a-z]*[\-\/\. ]\d{2,4})/i);
-    if (m) cetak = keTanggal_(m[1]);
-  }
-  if (!cetak) {
-    var f = an.namaFile || '';
-    m = f.match(/((?:19|20)\d{2})[\-_\.]?(0[1-9]|1[0-2])[\-_\.]?([0-2]\d|3[01])/);
-    if (m) cetak = ymd_(m[1], m[2], m[3]);
-    else if ((m = f.match(/([0-2]\d|3[01])[\-_\.](0[1-9]|1[0-2])[\-_\.]((?:19|20)\d{2})/))) cetak = ymd_(m[3], m[2], m[1]);
-  }
-  var dariJudul = !!cetak;
-  if (!cetak || cetak > hariIniStr_()) cetak = hariIniStr_();
-  var lap = '';
-  m = t.match(/periode\s*:?\s*(\d{1,2}[\-\/]\d{4})(?!\d)/i);
-  if (m) lap = keBlth_(m[1]);
-  var pembina = '', namaPembina = '';
-  m = t.match(/pembina\s*:?\s*([A-Z]{2}\d{6})(?:\s*-\s*([A-Za-z][A-Za-z .,'\-]+))?/i);
-  if (m) { pembina = m[1].toUpperCase(); namaPembina = m[2] ? judulKata_(m[2].replace(/\s{2,}.*$/, '')) : ''; }
-  return { tanggal: cetak, dariJudul: dariJudul, laporan: lap, pembina: pembina, namaPembina: namaPembina };
-}
+/* Pengurai laporan = modul Impor bersama (kit/impor.js). Nama fungsi lama tetap dipakai di seluruh mesin LENSA. */
+KitImpor.pasang({
+  jenis: JENIS_LENSA,
+  saranPemetaan: true,
+  tambahan: function () { return bacaTab_('PEMETAAN').data; },
+  hariIni: function () { return hariIniStr_(); },
+  tglLokal: function (d) { return fmt_(d, 'yyyy-MM-dd'); }
+});
+function uraiCsv_(teks, pemisah) { return KitImpor.uraiCsv(teks, pemisah); }
+function deteksiPemisah_(teks) { return KitImpor.deteksiPemisah(teks); }
+function pemetaan_(lap) { return KitImpor.pemetaan(lap); }
+function analisaGrid_(grid, namaFile) { return KitImpor.analisaGrid(grid, namaFile); }
+function petakanKolom_(an, grid) { return KitImpor.petakanKolom(an, grid); }
+function ambilBaris_(an, peta, grid) { return KitImpor.ambilBaris(an, peta, grid); }
+function tentukanPeriode_(an) { return KitImpor.tentukanPeriode(an); }
+function cekPosisi_(jenis, data) { return KitImpor.cekPosisi(jenis, data); }
+function ambilKpi084_(grid) { return KitImpor.ambilKpi084(grid); }
+function bacaRekapItw_(grid) { return KitImpor.bacaRekapItw(grid); }
 
 /** Pintu masuk impor dari teks CSV. */
 function imporTeks_(namaFile, teks) {
@@ -3028,21 +3399,46 @@ function imporTeks_(namaFile, teks) {
 
 function imporGrid_(namaFile, grid, anSiap) {
   pastikanSiap_();
-  var id = idWaktu_('I');
-  var log = { id_impor: id, waktu: sekarangStr_(), jenis: '', nama_file: namaFile, periode: '', baris: '', aktif: '', baru: '', berubah: '', cek: '', pesan: '' };
+  var lr;
   try {
     var an = anSiap || analisaGrid_(grid, namaFile);
-    log.jenis = NAMA_LAPORAN[an.jenis];
     var peta = an.jenis === 'KPI084' ? {} : petakanKolom_(an, grid);
     var data = an.jenis === 'KPI084' ? ambilKpi084_(grid) : ambilBaris_(an, peta, grid);
     if (!data.length) throw new Error('Tidak ada baris data yang terbaca.');
     if (an.posisi) cekPosisi_(an.jenis, data);
-    var per = tentukanPeriode_(an);
+    lr = KitImpor.ringkas({ an: an, peta: peta, data: data, per: tentukanPeriode_(an), rekap: an.jenis === 'ITW_ITB' ? bacaRekapItw_(grid) : null, namaFile: namaFile });
+  } catch (e) {
+    var log = { id_impor: idWaktu_('I'), waktu: sekarangStr_(), jenis: anSiap ? NAMA_LAPORAN[anSiap.jenis] || '' : '', nama_file: namaFile, periode: '', baris: '', aktif: '', baru: '', berubah: '', cek: '', pesan: 'GAGAL: ' + e.message };
+    try { tambahBaris_('LOG_IMPOR', [log]); } catch (e2) { /* diam */ }
+    return { ok: false, jenis: '', ringkas: namaFile + ': GAGAL — ' + e.message, log: log };
+  }
+  // laporan utuh (semua pembina) disimpan sekali di Gudang Laporan KC; laporan kiriman Monitor ≤ 1.5 lewat jembatan tidak (hanya baris binaan)
+  var gudang = _DARI_SPPG ? '' : simpanGudang_(lr, 'LENSA PK');
+  var h = imporLaporan_(lr);
+  if (gudang) h.ringkas += ' · ' + gudang;
+  return h;
+}
+
+/**
+ * Laporan ringkas (modul Impor bersama) → tab LENSA. Dipakai impor dari aplikasi LENSA (apiImporLaporan),
+ * dari Drive/dialog (imporGrid_), dan laporan unggahan aplikasi lain lewat Hub (imporDariHub_).
+ */
+function imporLaporan_(lr, opsi) {
+  opsi = opsi || {};
+  pastikanSiap_();
+  var id = idWaktu_('I');
+  var log = { id_impor: id, waktu: sekarangStr_(), jenis: '', nama_file: lr.nama_file, periode: '', baris: '', aktif: '', baru: '', berubah: '', cek: '', pesan: '' };
+  var namaFile = String(lr.nama_file || 'laporan');
+  try {
+    var b = KitImpor.buka(lr), an = b.an, peta = b.peta, data = b.data, per = b.per;
+    log.jenis = NAMA_LAPORAN[an.jenis] || an.jenis;
+    if (JENIS_LENSA.indexOf(an.jenis) < 0) throw new Error('Jenis laporan ini tidak dipakai LENSA PK.');
+    if (!data.length) throw new Error('Tidak ada baris data yang terbaca.');
     var jaga = jagaPembina_(an.jenis, per, peta, data);
     data = jaga.data;
     if (per.pembina && !P_('kode_pembina')) setPengaturan_('kode_pembina', per.pembina);
     if (per.namaPembina && !P_('nama_petugas') && jaga.milikSaya) setPengaturan_('nama_petugas', per.namaPembina);
-    var ctx = { id: id, periode: per.tanggal, per: per, an: an, grid: grid, namaFile: namaFile, peta: peta };
+    var ctx = { id: id, periode: per.tanggal, per: per, an: an, rekap: b.rekap, namaFile: namaFile, peta: peta };
     var h;
     if (an.jenis === 'KPI084') h = imporKpi084_(data, ctx);
     else if (an.jenis === 'KPI085') h = imporKpi085_(data, ctx);
@@ -3057,14 +3453,57 @@ function imporGrid_(namaFile, grid, anSiap) {
     log.berubah = h.berubah === undefined ? '' : h.berubah;
     log.cek = (h.cek || '') + jaga.catatan;
     h.cek = log.cek;
-    log.pesan = 'OK' + (an.posisi ? ' · kolom dibaca menurut urutan' : '') + (an.menurutIsi ? ' · format Excel: kolom dibaca menurut isinya' : '') + (h.pesan ? ' · ' + h.pesan : '');
+    log.pesan = 'OK' + (opsi.asal ? ' · dari ' + opsi.asal : '') + (an.posisi ? ' · kolom dibaca menurut urutan' : '') + (an.menurutIsi ? ' · format Excel: kolom dibaca menurut isinya' : '') + (h.pesan ? ' · ' + h.pesan : '');
     tambahBaris_('LOG_IMPOR', [log]);
-    try { kirimBerkasSppg_(namaFile, grid, an, peta, data); } catch (eS) { catatGalat_('kirimBerkasSppg_', eS.message, VERSI, 'server'); }
-    return { ok: true, jenis: an.jenis, ringkas: NAMA_LAPORAN[an.jenis] + ' (' + namaFile + '): ' + data.length + ' baris. ' + (h.cek ? h.cek + '. ' : '') + (h.pesan || ''), log: log };
+    try { kirimBerkasSppg_(lr, data); } catch (eS) { catatGalat_('kirimBerkasSppg_', eS.message, VERSI, 'server'); }
+    return { ok: true, jenis: an.jenis, ringkas: NAMA_LAPORAN[an.jenis] + ' (' + namaFile + '): ' + data.length + ' baris. ' + (h.cek ? h.cek + '. ' : '') + (h.pesan || ''), log: log, lr: lr };
   } catch (e) {
-    log.pesan = 'GAGAL: ' + e.message;
+    log.pesan = 'GAGAL: ' + e.message + (opsi.asal ? ' · dari ' + opsi.asal : '');
     try { tambahBaris_('LOG_IMPOR', [log]); } catch (e2) { /* diam */ }
-    return { ok: false, jenis: '', ringkas: namaFile + ': GAGAL — ' + e.message, log: log };
+    return { ok: false, jenis: lr.jenis || '', ringkas: namaFile + ': GAGAL — ' + e.message, log: log, lr: lr };
+  }
+}
+
+/** Laporan ke Gudang Laporan KC (Hub, berkas Hub.gs di proyek ini). Di perangkat (mesin LENSA) tidak ada Hub: dilewati. */
+function simpanGudang_(lr, app) {
+  if (typeof hubSimpanLaporan_ !== 'function' || !lr || !KitImpor.GUDANG[lr.jenis]) return '';
+  try { return hubSimpanLaporan_(lr, { app: app, oleh: typeof aksesOlehTeks_ === 'function' ? aksesOlehTeks_() : '' }).ringkas; }
+  catch (e) { try { catatGalat_('simpanGudang_', e.message, VERSI, 'server'); } catch (e2) { /* diam */ } return 'Gudang Laporan KC: gagal (' + e.message + ')'; }
+}
+
+/**
+ * Laporan unggahan aplikasi lain (Monitor SPPG) yang masuk Hub: baris binaan LENSA langsung diolah di sini.
+ * Baris binaan = seluruh laporan bila judulnya menyebut kode pembina LENSA; bila ada kolom pembina, baris berkode LENSA;
+ * selain itu NPP yang sudah dikenal LENSA (PERUSAHAAN / STATUS_PK). Aturan ini sama dengan Monitor SPPG ≤ 1.5.
+ */
+function imporDariHub_(lr, asal) {
+  if (!SPPG_JENIS_LAPORAN[lr.jenis]) return null;
+  muatPengaturan_();
+  var kode = String(P_('kode_pembina') || '').trim().toUpperCase(), per = lr.per || {};
+  if (!kode) return { ok: false, lewat: true, ringkas: 'LENSA PK: kode pembina belum diisi, laporan hanya disimpan di gudang' };
+  if (per.pembina && per.pembina !== kode) return { ok: false, lewat: true, ringkas: 'LENSA PK: laporan pembina ' + per.pembina + ', bukan ' + kode };
+  var iNpp = lr.kolom.indexOf('npp'), iPb = lr.kolom.indexOf('pembina');
+  if (iNpp < 0) return null;
+  if (iPb >= (lr.nPeta === undefined ? lr.kolom.length : lr.nPeta)) iPb = -1;
+  var semua = per.pembina === kode, dikenal = semua || iPb >= 0 ? {} : nppDikenalLensa_();
+  var baris = lr.baris.filter(function (r) {
+    if (semua) return true;
+    if (iPb >= 0) return (String(r[iPb] || '').toUpperCase().match(/[A-Z]{2}\d{6}/) || [''])[0] === kode;
+    return !!dikenal[rapikanNpp_(r[iNpp])];
+  });
+  if (!baris.length) return { ok: false, lewat: true, ringkas: 'LENSA PK: tidak ada baris binaan ' + kode };
+  var sub = JSON.parse(JSON.stringify(lr));
+  sub.baris = baris;
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(60000)) throw new Error('LENSA PK sedang sibuk (impor/hitung lain).');
+  try {
+    _DARI_SPPG = true; // tidak dikirim balik ke Monitor lewat jembatan
+    var h = imporLaporan_(sub, { asal: asal || 'Hub' });
+    if (h.ok) hitungUlang_();
+    return h;
+  } finally {
+    _DARI_SPPG = false;
+    lock.releaseLock();
   }
 }
 
@@ -3097,23 +3536,6 @@ function jagaPembina_(jenis, per, peta, data) {
   if (!per.pembina && !adaKode) hasil.catatan = ' · kode pembina tidak tercantum di file, pastikan ini laporan ' + kode;
   else hasil.milikSaya = true;
   return hasil;
-}
-
-/** Bila kolom dibaca menurut urutan, pastikan isinya masuk akal sebelum disimpan. */
-function cekPosisi_(jenis, data) {
-  var uji = {
-    ITW_ITB: function (o) { return keBlth_(o.periode_nilai) && keYT_(o.itw) && keYT_(o.itb); },
-    MONITORING: function (o) { return (!o.blth_posting || keBlth_(o.blth_posting)) && (!o.tgl_terima || keTanggal_(o.tgl_terima)) && /^(B|Mn|K|Mi|MI|)$/.test(String(o.skala).trim()); },
-    DATA_BU: function (o) { return keAngka_(o.total_upah) !== null && (!o.blth_iuran || keBlth_(o.blth_iuran)); },
-    KARTU_IURAN: function (o) { return keTanggal_(o.tgl_bayar) && keAngka_(o.total_iuran) !== null; },
-    KPI084: function (o) { return keAngka_(o.pk_itw) !== null && keAngka_(o.mig_itw) !== null; },
-    KPI085: function (o) { return kelasDariTeks_(o.kelas_lalu) && /^(YA|TIDAK|Y|T)$/i.test(String(o.migrasi).trim()); }
-  }[jenis];
-  var cocok = data.filter(uji).length;
-  if (cocok < data.length * 0.9) {
-    throw new Error('Judul kolom tidak dikenali dan isi kolom tidak sesuai urutan ' + NAMA_LAPORAN[jenis] + ' (' + cocok + ' dari ' + data.length +
-      ' baris cocok). Tambahkan judul kolom yang dipakai file ini di tab PEMETAAN.');
-  }
 }
 
 /* ------------------------- snapshot ------------------------- */
@@ -3200,7 +3622,7 @@ function imporItw_(data, ctx) {
   var jItw = rows.filter(function (o) { return o.itw === 'Y'; }).length;
   var jItb = rows.filter(function (o) { return o.itb === 'Y'; }).length;
   var cek = 'PK ' + rows.length + ' · ITW ' + jItw + ' · ITB ' + jItb;
-  var rekap = bacaRekapItw_(ctx.grid);
+  var rekap = ctx.rekap !== undefined ? ctx.rekap : bacaRekapItw_(ctx.grid);
   if (rekap) {
     var cocok = rekap.aktif === rows.length && rekap.itw === jItw && rekap.itb === jItb;
     cek += cocok ? ' · cocok dengan rekap pembina' : ' · BEDA dengan rekap pembina (PK ' + rekap.aktif + ', ITW ' + rekap.itw + ', ITB ' + rekap.itb + ')';
@@ -3248,25 +3670,6 @@ function imporItw_(data, ctx) {
   hasil.berubah = berubah;
   if (hasil.baru) hasil.pesan = hasil.baru + ' usulan baru di TINJAU';
   return hasil;
-}
-
-function bacaRekapItw_(grid) {
-  for (var r = 0; r < grid.length; r++) {
-    var row = grid[r].map(norm_);
-    if (row.indexOf('jml itw') >= 0 || row.indexOf('jumlah itw') >= 0) {
-      for (var k = r + 1; k < Math.min(grid.length, r + 5); k++) {
-        var angka = [];
-        grid[k].forEach(function (x) {
-          var s = String(x || '').trim();
-          if (!s || s.indexOf('%') >= 0) return;
-          var a = keAngka_(s);
-          if (a !== null) angka.push(a);
-        });
-        if (angka.length >= 4) return { aktif: angka[0], itw: angka[1], target: angka[2], itb: angka[3] };
-      }
-    }
-  }
-  return null;
 }
 
 /* -------------------------- MONITORING -------------------------- */
@@ -5939,39 +6342,6 @@ function imporKpi084_(data, ctx) {
   return { periode: ctx.periode, aktif: '', baru: baru.length, berubah: bulanList.length - baru.length, cek: cek, pesan: '' };
 }
 
-/**
- * KPI084: setiap baris bulan dibaca menurut urutan isinya (nama bulan lalu 19 angka b..t),
- * karena ekspor Excel menaruh angka di kolom yang berbeda-beda tiap baris.
- */
-function ambilKpi084_(grid) {
-  var kunci = ['pk_itw', 'pk_lancar', 'pk_kurang_lancar', 'pk_diragukan', 'pk_macet', 'mig_itw', 'mig_lancar', 'mig_kurang_lancar', 'mig_diragukan',
-    'cap_itw', 'cap_lancar', 'cap_kurang_lancar', 'cap_diragukan', 'rata_itw', 'rata_lancar', 'rata_kurang_lancar', 'rata_diragukan', 'bobot', 'skor'];
-  var out = [], lihat = {};
-  grid.forEach(function (row) {
-    for (var c = 0; c < row.length; c++) {
-      var x = norm_(row[c]);
-      if (!/^[a-z]{3,9}$/.test(x) || !BULAN_SINGKAT[x.slice(0, 3)] || !BULAN_KPI.test(x)) continue;
-      var angka = [];
-      for (var d = c + 1; d < row.length && angka.length < kunci.length; d++) {
-        var s = String(row[d] === undefined ? '' : row[d]).trim();
-        if (!s) continue;
-        var a = keAngka_(s, true);
-        if (a === null) { angka = null; break; }
-        angka.push(s);
-      }
-      if (!angka || angka.length < 9) continue;
-      var b = x.slice(0, 3);
-      if (lihat[b]) return; // blok kedua (konsolidasi) sama isinya
-      lihat[b] = true;
-      var o = { bulan: x };
-      kunci.forEach(function (k, i) { o[k] = angka[i] === undefined ? '' : angka[i]; });
-      out.push(o);
-      return;
-    }
-  });
-  return out;
-}
-
 function bulanDariJudul_(teks) {
   var m = norm_(teks).match(/(jan|feb|mar|apr|mei|may|jun|jul|agu|ags|agt|aug|sep|okt|oct|nov|des|dec)[a-z]*\s*(\d{2,4})\b/);
   return m ? tahun4_(m[2]) + '-' + pad2_(BULAN_SINGKAT[m[1]]) : '';
@@ -7299,7 +7669,18 @@ function hapusPemicuSppg_() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'jembatanSppg') ScriptApp.deleteTrigger(t); });
 }
 
-function infoSppg_() { return { kode: String(P_('kode_pembina') || '').toUpperCase(), versi: VERSI, waktu: sekarangStr_() }; }
+function infoSppg_() {
+  // 1.23: alamat Hub (LENSA /exec) agar Monitor SPPG 1.6 bisa mengunggah & menarik laporan Gudang Laporan KC
+  return { kode: String(P_('kode_pembina') || '').toUpperCase(), versi: VERSI, waktu: sekarangStr_(), hub: typeof hubUrl_ === 'function' ? hubUrl_() : '', hubVersi: typeof HUB_VERSI !== 'undefined' ? HUB_VERSI : '' };
+}
+/** Info LENSA (kode pembina, alamat Hub) dikirim ulang ke Monitor bila berubah. */
+function kirimInfoSppg_() {
+  var pr = sppgProp_(), info = infoSppg_(), h = hashSppg_(JSON.stringify([info.kode, info.hub, info.hubVersi, info.versi]));
+  if (h === pr.getProperty('SPPG_INFO')) return 0;
+  var n = tulisSppg_([{ jenis: 'info', id: 'info', data: info }]);
+  pr.setProperty('SPPG_INFO', h);
+  return n;
+}
 
 /* ---------------- kotak keluar (SINKRON_SPPG) ---------------- */
 
@@ -7386,7 +7767,10 @@ function jembatanSppg() {
     var mon = SpreadsheetApp.openById(id);
     terimaDariSppg_(mon, h);
     var baruDipasang = pr.getProperty('SPPG_VERSI') !== VERSI; // versi skrip baru: periksa ulang semua PIC & catatan
+    h.keluar += kirimInfoSppg_();
     h.keluar += kirimPerubahanSppg_(h.masuk > 0 || baruDipasang);
+    // 1.23: laporan unggahan Monitor di Gudang Laporan KC yang belum sempat diolah LENSA (permintaan terputus)
+    if (typeof hubOlahTertunda_ === 'function') { try { hubOlahTertunda_(); } catch (eH) { catatGalat_('hubOlahTertunda_', eH.message, VERSI, 'pemicu'); } }
     pr.setProperty('SPPG_VERSI', VERSI);
     pr.setProperty('SPPG_TERAKHIR', sekarangStr_());
     pr.deleteProperty('SPPG_GALAT');
@@ -7633,21 +8017,49 @@ function kirimPerubahanSppg_(paksa) {
   return n;
 }
 
-/** Dipanggil imporGrid_ setelah impor berhasil: baris SPPG dari laporan dikirim ke Monitor SPPG. */
-function kirimBerkasSppg_(namaFile, grid, an, peta, data) {
-  if (_DARI_SPPG || !sppgAktif_() || !SPPG_JENIS_LAPORAN[an.jenis] || peta.npp === undefined) return;
+/**
+ * Dipanggil imporLaporan_ setelah impor berhasil: baris SPPG binaan dikirim ke Monitor SPPG lewat jembatan.
+ * 1.23: hanya selama masih ada perangkat Monitor SPPG ≤ 1.5 yang aktif; Monitor 1.6 menarik laporan dari Gudang Laporan KC (Hub).
+ */
+function kirimBerkasSppg_(lr, data) {
+  if (_DARI_SPPG || !sppgAktif_() || !SPPG_JENIS_LAPORAN[lr.jenis]) return;
+  var iNpp = lr.kolom.indexOf('npp');
+  if (iNpp < 0 || !monitorLama_()) return;
   var segmen = nppSppgLensa_(), milik = {};
   data.forEach(function (r) { var n = rapikanNpp_(r.npp); if (n) milik[n] = true; });
-  var out = [], ambil = false, ada = 0;
-  for (var i = 0; i < grid.length; i++) {
-    var row = grid[i] || [];
-    if (i < an.mulai) { out.push(row); continue; }
-    var n = rapikanNpp_(row[peta.npp]);
-    if (n) ambil = !!milik[n] && (segmen[n] || namaSppg_(row.join(' ')));
-    if (ambil) { out.push(row); if (n) ada++; }
+  var baris = lr.baris.filter(function (r) { var n = rapikanNpp_(r[iNpp]); return n && milik[n] && (segmen[n] || namaSppg_(r.join(' '))); });
+  if (!baris.length) return;
+  var sub = JSON.parse(JSON.stringify(lr));
+  sub.baris = baris;
+  tulisSppg_([{ jenis: 'berkas', id: idWaktu_('B'), data: { nama: lr.nama_file, laporan: lr.jenis, waktu: sekarangStr_(), grid: KitImpor.keGrid(sub) } }]);
+}
+
+/** Masih ada perangkat Monitor SPPG versi lama (< 1.6.0) yang aktif dalam 14 hari terakhir? (Sheet Monitor, tab PERANGKAT) */
+var _MONITOR_LAMA = null;
+function monitorLama_() {
+  if (_MONITOR_LAMA !== null) return _MONITOR_LAMA;
+  _MONITOR_LAMA = true;
+  try {
+    var sh = SpreadsheetApp.openById(sppgProp_().getProperty('SPPG_ID')).getSheetByName('PERANGKAT');
+    if (!sh || sh.getLastRow() < 2) return _MONITOR_LAMA;
+    var v = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues(), k = v[0].map(String);
+    var iSt = k.indexOf('status'), iVer = k.indexOf('versi_app'), iSink = k.indexOf('terakhir_sinkron');
+    var batas = fmt_(new Date(Date.now() - 14 * 86400000), 'yyyy-MM-dd');
+    _MONITOR_LAMA = v.slice(1).some(function (r) {
+      var t = r[iSink] instanceof Date ? fmt_(r[iSink], 'yyyy-MM-dd') : String(r[iSink] || '').slice(0, 10);
+      return r[iSt] === 'Aktif' && t >= batas && versiLebihKecil_(String(r[iVer] || ''), '1.6.0');
+    });
+  } catch (e) { _MONITOR_LAMA = true; }
+  return _MONITOR_LAMA;
+}
+function versiLebihKecil_(a, b) {
+  var x = String(a).split('.'), y = String(b).split('.');
+  if (!a) return true;
+  for (var i = 0; i < Math.max(x.length, y.length); i++) {
+    var p = +x[i] || 0, q = +y[i] || 0;
+    if (p !== q) return p < q;
   }
-  if (!ada) return;
-  tulisSppg_([{ jenis: 'berkas', id: idWaktu_('B'), data: { nama: namaFile, laporan: an.jenis, waktu: sekarangStr_(), grid: out } }]);
+  return false;
 }
 
 /* ================= SERVER SINKRON LENSA 2.0 (sejak 1.15) =================
@@ -7660,7 +8072,7 @@ function kirimBerkasSppg_(namaFile, grid, an, peta, data) {
  */
 var APP_FN_TULIS = ['apiSimpanPk', 'apiGeotag', 'apiKelompok', 'apiGantiKelompok', 'apiSimpanKontak', 'apiLepasKontak', 'apiSimpanPengurus',
   'apiPkKontak', 'apiSatukanOrang', 'apiCatat', 'apiSimpanTemplat', 'apiHapusTemplat', 'apiCentang', 'apiCentangPk', 'apiSimpanJadwal', 'apiHitung', 'apiImporApp',
-  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi'];
+  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi', 'apiImporLaporan'];
 var APP_FN_HANYA_PEMILIK = { apiSimpanRedaksi: 'Pustaka Redaksi WA hanya bisa diubah dari perangkat Pemilik.' };
 var APP_FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg']; // butuh internet / spreadsheet lain: tidak bisa di perangkat
 var APP_FN_AKSES = ['apiAksesMuat', 'apiAksesPerintah', 'apiAksesServer']; // pengelola perangkat & pengguna (hanya perangkat Pemilik)
@@ -7683,12 +8095,35 @@ function siapkanSinkronApp() {
 }
 function gantiKunciApp() { PropertiesService.getScriptProperties().deleteProperty('KUNCI_APP'); siapkanSinkronApp(); }
 
-/** Laporan dari LENSA 2.0: diimpor dengan aturan yang sama (jagaPembina_) lalu dihitung ulang. */
+/** Laporan dari LENSA 2.0–2.4 (berkas utuh): diimpor dengan aturan yang sama (jagaPembina_) lalu dihitung ulang. */
 function apiImporApp(berkas) {
   var lock = kunciApi_();
   try {
     muatPengaturan_();
     var hasil = (berkas || []).map(function (b) { return imporGrid_(String(b.nama || 'laporan'), b.grid); });
+    if (hasil.some(function (h) { return h.ok; })) hitungUlang_();
+    return { ok: true, hasil: hasil.map(function (h) { return { ok: h.ok, ringkas: h.ringkas }; }) };
+  } finally { lock.releaseLock(); }
+}
+
+/**
+ * 1.23 (LENSA 2.5): laporan sudah diurai di perangkat dengan modul Impor bersama; yang dikirim hanya baris ringkas.
+ * Di server: laporan utuh disimpan sekali di Gudang Laporan KC (Hub), lalu baris binaan diolah seperti biasa.
+ * Di perangkat (mesin LENSA): hanya diolah ke tab LENSA.
+ */
+function apiImporLaporan(daftar) {
+  var lock = kunciApi_();
+  try {
+    muatPengaturan_();
+    var urut = [];
+    (daftar || []).forEach(function (x) { try { urut.push(KitImpor.periksa(x)); } catch (e) { catatGalat_('apiImporLaporan', e.message, VERSI, 'server'); } });
+    urut.sort(function (a, b) { return (PRIORITAS_IMPOR[a.jenis] || 9) - (PRIORITAS_IMPOR[b.jenis] || 9); });
+    var hasil = urut.map(function (lr) {
+      var gudang = simpanGudang_(lr, 'LENSA PK');
+      var h = imporLaporan_(lr);
+      if (gudang) h.ringkas += ' · ' + gudang;
+      return h;
+    });
     if (hasil.some(function (h) { return h.ok; })) hitungUlang_();
     return { ok: true, hasil: hasil.map(function (h) { return { ok: h.ok, ringkas: h.ringkas }; }) };
   } finally { lock.releaseLock(); }
@@ -7712,11 +8147,16 @@ function doPost(e) {
   var hasil, req = {};
   try {
     req = JSON.parse(e && e.postData ? e.postData.contents : '{}');
-    if (req.aksi === 'gabung') hasil = aksesGabung_(req);
+    if (req.aksi === 'hub') { // 1.23: Hub LENSA Suite (berkas Hub.gs) — perangkat aplikasi lain memakai tokennya sendiri
+      if (typeof hubPintu_ !== 'function') throw new Error('Hub LENSA Suite belum dipasang di proyek LENSA PK (berkas Hub.gs).');
+      hasil = hubPintu_(req);
+    }
+    else if (req.aksi === 'gabung') hasil = aksesGabung_(req);
     else if (req.aksi === 'daftar') hasil = aksesDaftarKunci_(req);
     else {
       var ctx = aksesPeriksa_(req);
       if (ctx.akhir && req.aksi !== 'jalankan') { aksesSelesaikan_(ctx, alasanAkhir_(ctx)); throw aksesGalatCabut_(alasanAkhir_(ctx) + '. Data LENSA di perangkat ini dihapus.'); }
+      if (req.alamat && typeof hubCatatAlamat_ === 'function') hubCatatAlamat_(req.alamat); // alamat Hub untuk Monitor SPPG
       pastikanSiap_(); // versi baru (mis. kolom baru) disiapkan juga bila permintaan pertama datang dari LENSA 2.x
       muatPengaturan_();
       var akses = ctx.lama ? null : aksesInfo_(ctx.p);
@@ -7741,7 +8181,8 @@ function jalankanApp_(ops, ctx) {
   var peta = { apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak,
     apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat,
     apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiSimpanJadwal: apiSimpanJadwal,
-    apiHitung: apiHitung, apiImporApp: apiImporApp, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiSimpanRedaksi: apiSimpanRedaksi };
+    apiHitung: apiHitung, apiImporApp: apiImporApp, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiSimpanRedaksi: apiSimpanRedaksi,
+    apiImporLaporan: apiImporLaporan };
   var out = aksesJalankan_(ctx || { idp: '' }, ops, function (op) {
     if (APP_FN_HANYA_PEMILIK[op.fn] && ctx && !ctx.lama && ctx.peran !== 'Pemilik') throw new Error(APP_FN_HANYA_PEMILIK[op.fn]);
     try { peta[op.fn].apply(null, op.args || []); }
@@ -7776,7 +8217,7 @@ function panggilApp_(fn, args, ctx) {
 }
 
 /* === 06-fungsi === */
-var FUNGSI_LENSA = {apiMuat: apiMuat, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiRiwayat: apiRiwayat, apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak, apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat, apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiSimpanRedaksi: apiSimpanRedaksi, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiGalat: apiGalat, apiSimpanJadwal: apiSimpanJadwal, apiUraiPeta: apiUraiPeta, apiHitung: apiHitung, apiJembatanSppg: apiJembatanSppg, apiImporApp: apiImporApp};
+var FUNGSI_LENSA = {apiMuat: apiMuat, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiRiwayat: apiRiwayat, apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak, apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat, apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiSimpanRedaksi: apiSimpanRedaksi, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiGalat: apiGalat, apiSimpanJadwal: apiSimpanJadwal, apiUraiPeta: apiUraiPeta, apiHitung: apiHitung, apiJembatanSppg: apiJembatanSppg, apiImporApp: apiImporApp, apiImporLaporan: apiImporLaporan};
 var CSS_LAYAR2 = ":host{\n  --biru:#0E5A5F;--biru2:#157A80;--biruTua:#0A4347;--biruL:#E1F0F0;--emas:#C9972B;--teks:#16202E;--pudar:#566070;--garis:#E3E6EC;--garis2:#C9CED8;--latar:#F3F4F7;--putih:#fff;\n  --tepat:#1F7A56;--tepatL:#E3F2E9;--lalu:#3F63B8;--laluL:#E8ECF7;--m2:#E0A81E;--m3:#D97A1E;--m4:#C4551C;--m5:#A33319;--m6:#7E1A1A;--merahL:#F9E1DF;--kuningL:#FBEFD5;\n  --wa:#17794A;--r:14px;--bayang:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);\n  --huruf:\"Segoe UI\",system-ui,-apple-system,Roboto,\"Helvetica Neue\",Arial,sans-serif;\n}\n*{box-sizing:border-box}\n:host{margin:0;padding:0;background:var(--latar);color:var(--teks);font:15px/1.45 var(--huruf);-webkit-text-size-adjust:100%}\nbutton,input,select,textarea{font:inherit;color:inherit}\ninput,select,textarea{font-size:15px}\na{color:var(--biru)}\nh1,h2,h3{margin:0;line-height:1.2}\n.angka{font-variant-numeric:tabular-nums}\n[hidden]{display:none!important}\n\n/* ---------- kerangka ---------- */\n.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;background:linear-gradient(90deg,var(--biru) 232px,var(--latar) 232px)}\n.sisi{background:var(--biru);color:#fff;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:20px 12px 14px;gap:18px;overflow-y:auto}\n.merek{padding:0 8px}\n.merek-judul{font-size:21px;font-weight:700;letter-spacing:-.2px}\n.merek-sub{font-size:12px;color:#C9D3EE;margin-top:2px}\n.nav{display:flex;flex-direction:column;gap:2px}\n.nav button{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:10px;background:none;color:#DCE3F5;font-weight:500;text-align:left;cursor:pointer}\n.nav button:hover{background:rgba(255,255,255,.08);color:#fff}\n.nav button[aria-current=\"page\"]{background:#fff;color:var(--biru);font-weight:700}\n.nav svg{width:20px;height:20px;flex:none}\n.nav .lencana{margin-left:auto;background:#FBEFD5;color:#5C3D00;border-radius:999px;font-size:12px;font-weight:700;padding:1px 8px}\n.sisi-bawah{margin-top:auto;font-size:12px;color:#C9D3EE;padding:0 8px;display:flex;flex-direction:column;gap:6px}\n.titik{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7FE0B0;margin-right:6px;vertical-align:middle}\n.titik.kuning{background:#F5C451}\n.isi{min-width:0;padding:26px 32px 48px;outline:none}\n.isi-dalam{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:18px}\n\n.kepala{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}\n.kepala h1{font-size:26px;font-weight:700;letter-spacing:-.3px}\n.kepala .sub{color:var(--pudar);margin-top:4px}\n.kepala-aksi{display:flex;gap:8px;flex-wrap:wrap}\n\n/* ---------- komponen ---------- */\n.kartu{background:#fff;border-radius:var(--r);box-shadow:var(--bayang);padding:18px 20px}\n.kartu h2{font-size:17px;font-weight:700}\n.kartu-kepala{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}\n.kartu-kepala .ket{color:var(--pudar);font-size:13px}\n.label-kecil{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--pudar);text-transform:uppercase}\n.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr));gap:18px}\n.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:14px}\n.ubin{background:#fff;border-radius:var(--r);box-shadow:var(--bayang);padding:16px 18px;display:flex;flex-direction:column;gap:4px}\n.ubin .besar{font-size:32px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums}\n.ubin .besar small{font-size:16px;color:var(--pudar);font-weight:600}\n.ubin .ket{font-size:13px;color:var(--pudar)}\n\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--garis2);background:#fff;color:var(--teks);font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}\n.btn:hover{border-color:#9AA3B2;background:#FAFBFC}\n.btn:disabled{opacity:.5;cursor:not-allowed}\n.btn.utama{background:var(--biru);border-color:var(--biru);color:#fff}\n.btn.utama:hover{background:var(--biruTua)}\n.btn.wa{background:var(--wa);border-color:var(--wa);color:#fff}\n.btn.wa:hover{background:#11633C}\n.btn.bahaya{color:#9E2A22;border-color:#E3B4AF}\n.btn.kecil{min-height:34px;padding:0 10px;font-size:13px;border-radius:8px}\n.btn.polos{border-color:transparent;background:none;color:var(--biru)}\n.btn.polos:hover{background:var(--biruL)}\n.btn svg{width:18px;height:18px;flex:none}\n\n.chip-baris{display:flex;flex-wrap:wrap;gap:8px}\n.chip{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--garis2);background:#fff;font-size:13px;font-weight:500;cursor:pointer}\n.chip[aria-pressed=\"true\"]{background:var(--teks);border-color:var(--teks);color:#fff}\n.kotak{width:10px;height:10px;border-radius:3px;flex:none;display:inline-block}\n.seg{display:inline-grid;grid-auto-flow:column;gap:4px;background:#E3E6EC;border-radius:12px;padding:4px}\n.seg button{min-height:36px;padding:0 14px;border:0;border-radius:9px;background:none;font-weight:600;color:var(--pudar);cursor:pointer}\n.seg button[aria-pressed=\"true\"]{background:#fff;color:var(--teks);box-shadow:0 1px 2px rgba(16,24,40,.12)}\n\n.lencana-st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:6px;padding:3px 8px;white-space:nowrap}\n.st-tepat{background:var(--tepatL);color:#155C40}\n.st-lalu{background:var(--laluL);color:#2B4A93}\n.st-m2{background:#FBF0D2;color:#6B4A00}\n.st-m3{background:#FBE5CC;color:#7A3F00}\n.st-m4{background:#F9DCCB;color:#8A3410}\n.st-m5,.st-m6,.st-mx{background:var(--m6);color:#fff}\n.st-abu{background:#EEF0F4;color:var(--pudar)}\n\n.field{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600;color:var(--pudar)}\n.inp{min-height:40px;border:1px solid var(--garis2);border-radius:10px;padding:0 12px;background:#fff;width:100%;color:var(--teks);font-weight:400}\ntextarea.inp{padding:10px 12px;min-height:120px;resize:vertical;line-height:1.45}\n.inp:focus,.btn:focus-visible,.chip:focus-visible,.nav button:focus-visible{outline:3px solid #9AAAD3;outline-offset:1px}\nselect.inp{padding-right:28px}\n.baris-saring{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}\n.baris-saring .field{min-width:170px}\n.cari{position:relative;flex:1 1 260px}\n.cari input{padding-left:38px}\n.cari svg{position:absolute;left:12px;top:11px;width:18px;height:18px;color:var(--pudar)}\n\n/* ---------- tabel ---------- */\n.tabel-bungkus{overflow:auto;border-radius:var(--r);background:#fff;box-shadow:var(--bayang)}\ntable.tabel{width:100%;border-collapse:collapse;font-size:14px}\n.tabel th{position:sticky;top:0;background:#F7F8FA;text-align:left;font-size:12px;font-weight:700;color:var(--pudar);padding:10px 12px;border-bottom:1px solid var(--garis);white-space:nowrap;z-index:1}\n.tabel td{padding:10px 12px;border-bottom:1px solid var(--garis);vertical-align:middle}\n.tabel tr.klik{cursor:pointer}\n.tabel tr.klik:hover td{background:#FAFBFD}\n.tabel .kanan{text-align:right}\n.tabel .nama{font-weight:700}\n.tabel .sub{font-size:12px;color:var(--pudar)}\n.tabel tr:last-child td{border-bottom:0}\n.no{color:var(--pudar);font-size:12px;width:36px}\n\n/* bulan bayar per NPP */\n.bulan{display:grid;grid-template-columns:repeat(6,13px);gap:4px}\n.bulan span{width:13px;height:13px;border-radius:3px;box-sizing:border-box}\n.bulan .y{background:var(--biru)}\n.bulan .t{border:2px solid var(--m4)}\n.bulan-label{display:grid;grid-template-columns:repeat(6,13px);gap:4px;font-size:10px;color:var(--pudar);text-align:center}\n.npp-mini{display:flex;flex-direction:column;gap:4px}\n.npp-mini .r{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--pudar)}\n.npp-mini .r b{width:58px;font-weight:600;color:var(--teks)}\n\n/* ---------- grafik ---------- */\n.bar-tumpuk{display:flex;gap:2px;height:22px;border-radius:6px;overflow:hidden}\n.bar-tumpuk div{min-width:3px}\n.rekap-baris{display:grid;grid-template-columns:minmax(178px,1.4fr) minmax(70px,1.6fr) 56px 50px;gap:14px;align-items:center;min-height:48px;border-top:1px solid var(--garis);padding:0 4px;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left;cursor:pointer}\n.rekap-baris:hover{background:#FAFBFD}\n.rekap-baris .lbl{display:flex;align-items:center;gap:10px}\n.rekap-baris .lbl small{display:block;color:var(--pudar);font-size:12px;white-space:nowrap}\n.rekap-baris .lbl>span{white-space:nowrap;font-weight:600}\n.rekap-baris .trek{height:12px;background:#EEF0F4;border-radius:4px;overflow:hidden}\n.rekap-baris .trek div{height:12px;border-radius:4px}\n.rekap-baris .n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}\n.rekap-baris .n small{display:block;font-size:11px;color:var(--pudar);font-weight:500}\n.rekap-kepala{display:grid;grid-template-columns:minmax(178px,1.4fr) minmax(70px,1.6fr) 56px 50px;gap:14px;padding:0 4px 6px;font-size:11px;font-weight:700;color:var(--pudar);text-transform:uppercase;letter-spacing:.6px}\n.rekap-kepala span:nth-child(n+3){text-align:right}\n.papan{display:flex;flex-direction:column}\n.papan .baris{display:flex;align-items:center;gap:12px;min-height:56px;border-top:1px solid var(--garis);cursor:pointer;padding:0 4px;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left}\n.papan .baris:hover{background:#FAFBFD}\n.papan .baris:first-child{border-top:0}\n.peringkat{width:28px;height:28px;border-radius:50%;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}\n.papan .tengah{flex:1;min-width:0}\n.papan .tengah b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.papan .tengah small{display:block;color:var(--pudar);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.tren{display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:8px}\n.tren .k{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}\n.tren .b{width:100%;max-width:56px;background:var(--tepat);border-radius:6px 6px 0 0}\n.tren .v{font-weight:700;font-size:13px}\n.tren .t{font-size:11px;color:var(--pudar)}\n\n/* ---------- pemberitahuan ---------- */\n.info{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:var(--kuningL);color:#5C3D00;font-size:14px}\n.info.biru{background:var(--biruL);color:#22356F}\n.info.merah{background:var(--merahL);color:#7E1A1A}\n.info svg{width:18px;height:18px;flex:none;margin-top:2px}\n.kosong{text-align:center;color:var(--pudar);padding:36px 16px}\n.lepas{border:2px dashed var(--garis2);border-radius:var(--r);padding:28px;text-align:center;background:#fff;display:flex;flex-direction:column;align-items:center;gap:10px}\n.lepas.aktif{border-color:var(--biru);background:var(--biruL)}\n.lepas p{margin:0;color:var(--pudar)}\n.daftar-hasil{display:flex;flex-direction:column;gap:6px;font-size:14px}\n.daftar-hasil .ok{color:#155C40}\n.daftar-hasil .gagal{color:#9E2A22}\n\n/* ---------- laci rincian ---------- */\n.laci-latar{position:fixed;inset:0;background:rgba(16,24,40,.32);z-index:40}\n.laci{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--latar);z-index:41;overflow-y:auto;box-shadow:-8px 0 24px rgba(16,24,40,.18);display:flex;flex-direction:column}\n.laci-kepala{position:sticky;top:0;background:var(--biru);color:#fff;padding:16px 16px 16px 20px;display:flex;align-items:flex-start;gap:12px;z-index:2}\n.laci-kepala h2{font-size:20px}\n.laci-kepala .sub{color:#DCE3F5;font-size:13px;margin-top:3px}\n.laci-kepala .tutup{margin-left:auto;background:none;border:0;color:#fff;width:40px;height:40px;border-radius:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}\n.laci-kepala .tutup:hover{background:rgba(255,255,255,.15)}\n.laci-isi{padding:16px;display:flex;flex-direction:column;gap:14px}\n.npp-kartu{border:1px solid var(--garis);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}\n.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13px}\n.kv dt{color:var(--pudar)}\n.kv dd{margin:0;font-weight:600}\n.hasil-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}\n.hasil-grid button{min-height:40px;border:1px solid var(--garis2);border-radius:10px;background:#fff;font-weight:500;cursor:pointer;font-size:13px}\n.hasil-grid button[aria-pressed=\"true\"]{border:2px solid var(--biru);background:var(--biruL);color:var(--biru);font-weight:700}\n.riwayat{display:flex;flex-direction:column}\n.riwayat .r{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--garis);font-size:13px}\n.riwayat .r:first-child{border-top:0}\n.riwayat .r .w{color:var(--pudar);width:92px;flex:none}\n\n/* ---------- hubungi ---------- */\n.antre .tabel td{vertical-align:top}\n.panel-hasil{background:#F7F8FA;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;margin-top:8px}\n.panel-hasil .judul{font-weight:700;font-size:13px}\n.panel-hasil .tombol{display:flex;flex-wrap:wrap;gap:6px}\n.kemajuan{height:8px;background:#E3E6EC;border-radius:4px;overflow:hidden}\n.kemajuan div{height:8px;background:var(--wa)}\n\n/* ---------- laporan ---------- */\n.laporan-tata{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);gap:18px;align-items:start}\n.opsi{display:flex;flex-direction:column;gap:14px}\n.opsi label.cek{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer}\n.opsi label.cek input{width:18px;height:18px;margin-top:2px;flex:none}\n.pratinjau-gambar{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}\n.gambar-kartu{background:#fff;border-radius:12px;box-shadow:var(--bayang);padding:10px;display:flex;flex-direction:column;gap:8px}\n.gambar-kartu img{width:100%;border-radius:6px;border:1px solid var(--garis);cursor:zoom-in;background:#fff}\n.gambar-kartu .aksi{display:flex;gap:6px;flex-wrap:wrap}\n.teks-laporan{font:14px/1.5 var(--huruf);white-space:pre-wrap}\ntextarea.inp.teks-laporan{min-height:440px}\n\n/* ---------- dialog & toast ---------- */\n.dialog-latar{position:fixed;inset:0;background:rgba(16,24,40,.4);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px}\n.dialog{background:#fff;border-radius:16px;box-shadow:0 20px 50px rgba(16,24,40,.3);width:min(620px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:22px;display:flex;flex-direction:column;gap:14px}\n.dialog.lebar{width:min(1100px,100%)}\n.dialog h2{font-size:19px}\n.dialog .aksi{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}\n.dialog img.penuh{width:100%;border:1px solid var(--garis);border-radius:8px}\n.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#1B2430;color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:.2s;z-index:80;max-width:min(560px,calc(100vw - 32px))}\n.toast.tampil{opacity:1;transform:translateX(-50%) translateY(0)}\n\n/* ---------- layar sedang & tablet ---------- */\n@media (max-width:1100px){\n  .app{grid-template-columns:86px minmax(0,1fr);background:linear-gradient(90deg,var(--biru) 86px,var(--latar) 86px)}\n  .sisi-bawah{display:none}\n  .sisi{padding:16px 8px;align-items:stretch}\n  .merek-sub,.sisi-bawah span.panjang{display:none}\n  .merek-judul{font-size:13px;text-align:center}\n  .nav button{flex-direction:column;gap:3px;min-height:58px;padding:6px 2px;font-size:11px;text-align:center;justify-content:center}\n  .nav .lencana{position:absolute;margin:0;transform:translate(18px,-16px);font-size:10px;padding:0 6px}\n  .nav button{position:relative}\n  .isi{padding:20px 20px 40px}\n  .laporan-tata{grid-template-columns:minmax(0,1fr)}\n}\n@media (max-width:760px){\n  .app{grid-template-columns:minmax(0,1fr);background:var(--latar)}\n  .sisi{position:sticky;height:auto;flex-direction:row;align-items:center;padding:8px;gap:8px;z-index:30;overflow-x:auto}\n  .merek,.sisi-bawah{display:none}\n  .nav{flex-direction:row;flex:1}\n  .nav button{min-width:76px}\n  .rekap-baris,.rekap-kepala{grid-template-columns:minmax(120px,1fr) minmax(60px,1fr) 52px 52px;gap:8px}\n}\n@media print{.sisi,.kepala-aksi,.laci,.laci-latar{display:none!important}.app{display:block}}\n\n/* ---------- dasbor v2 ---------- */\n.grid5{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:14px}\n.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}\nbutton.ubin{border:0;text-align:left;font:inherit;color:inherit;cursor:pointer}\n.ubin.klikable:hover,.ubin-kecil:hover{box-shadow:0 0 0 2px var(--biru2),var(--bayang)}\n.ubin .besar{font-size:30px}\n.pil-contoh{font-size:11px;font-weight:700;color:#5C3D00;background:var(--kuningL);border-radius:999px;padding:3px 10px}\nsvg.grafik{width:100%;height:auto;display:block;font:12px var(--huruf);fill:var(--pudar)}\nsvg.grafik text{fill:currentColor;color:var(--pudar)}\nsvg.grafik text[fill]{color:inherit}\n.grafik-tombol{display:block;width:100%;padding:0;border:0;background:none;cursor:pointer;border-radius:10px}\n.grafik-tombol:hover{background:#FAFBFD}\n.catatan-grafik{margin:8px 0 0;font-size:14px;color:var(--teks)}\n.catatan-kecil{margin:6px 0 0;font-size:12px;color:var(--pudar)}\n.tunggak-kepala,.tunggak-baris{display:grid;grid-template-columns:118px minmax(40px,1fr) 52px minmax(40px,1fr) 74px;gap:10px;align-items:center}\n.tunggak-kepala{font-size:11px;font-weight:700;color:var(--pudar);text-transform:uppercase;letter-spacing:.6px;padding:0 4px 6px}\n.tunggak-baris{width:100%;min-height:44px;border:0;border-top:1px solid var(--garis);background:none;padding:0 4px;text-align:left;cursor:pointer;font:inherit;font-size:13px;color:inherit}\n.tunggak-baris:hover{background:#FAFBFD}\n.tunggak-baris .trek{height:12px;background:#EEF0F4;border-radius:4px;overflow:hidden}\n.tunggak-baris .trek div{height:12px;border-radius:4px}\n.tunggak-baris .n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}\n.kartu-risiko{border-top:5px solid var(--m6)}\n.risiko-angka{display:flex;flex-direction:column;gap:2px}\n.risiko-angka span{font-size:12px;color:var(--pudar)}\n.risiko-angka b{font-size:21px;font-variant-numeric:tabular-nums}\n.risiko-angka em{font-style:normal;color:var(--m6)}\n.ubin-kecil{border:0;border-radius:10px;padding:10px 12px;background:#EEF0F4;display:flex;flex-direction:column;align-items:flex-start;cursor:pointer;font:inherit;color:inherit}\n.ubin-kecil b{font-size:24px;line-height:1.1}\n.ubin-kecil span{font-size:12px;font-weight:600}\n.ubin-kecil.baik{background:var(--tepatL);color:#155C40}\n.ubin-kecil.buruk{background:var(--merahL);color:var(--m6)}\n.matriks{display:grid;grid-template-columns:128px repeat(4,minmax(0,1fr));gap:4px;margin-top:12px;font-size:12px;text-align:center}\n.matriks [role=columnheader]{color:var(--pudar);font-weight:700;padding:4px 0}\n.matriks .pojok,.matriks .kiri{text-align:left;font-weight:600;color:var(--teks);padding:8px 0}\n.matriks .pojok{color:var(--pudar)}\n.matriks .sel{border:0;border-radius:6px;padding:9px 0;font:inherit;font-weight:700}\n.matriks button.sel{cursor:pointer}\n.matriks button.sel:hover{outline:2px solid var(--biru2)}\n.matriks .sama{background:#E3E6EC}\n.matriks .baik{background:#BFE3CD;color:#155C40}\n.matriks .buruk{background:#F4C9C4;color:var(--m6)}\n.matriks .nol{background:#F7F8FA;color:#9AA3B2;font-weight:400}\n.histo{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:end;height:190px;padding-top:6px}\n.histo .kolom{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%;border:0;background:none;cursor:pointer;font:inherit;color:inherit;border-radius:8px}\n.histo .kolom:hover{background:#FAFBFD}\n.histo .b{width:100%;max-width:58px;border-radius:6px 6px 0 0;display:block}\n.histo small{font-size:12px;color:var(--pudar)}\n.trek-kecil{height:8px;background:#EEF0F4;border-radius:4px;overflow:hidden;display:inline-block;width:70%;vertical-align:middle;margin-right:6px}\n.trek-kecil div{height:8px;background:var(--tepat)}\n.sinkron-status{display:flex;align-items:center;background:none;border:0;color:inherit;font:inherit;font-size:12px;padding:0;cursor:pointer;text-align:left}\n\n/* panel daftar SPPG */\n.kartu-sppg{padding:12px 14px;display:flex;flex-direction:column;gap:6px}\n.kartu-sppg.sudah{background:#F4FAF6}\n.kartu-sppg .atas{display:flex;align-items:center;justify-content:space-between;gap:10px}\n.kartu-sppg .nama-sppg{border:0;background:none;padding:0;font:inherit;font-weight:700;font-size:15px;color:var(--teks);cursor:pointer;text-align:left}\n.kartu-sppg .nama-sppg:hover{color:var(--biru)}\n.kartu-sppg .sub{font-size:12px;color:var(--pudar)}\n.kartu-sppg .pic{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--garis);padding-top:8px}\n.kartu-sppg .pic div:first-child{display:flex;flex-direction:column}\n.kartu-sppg .pic span{font-size:12px;color:var(--pudar)}\n.kartu-sppg .tombol{display:flex;gap:6px;flex-wrap:wrap}\n.kartu-sppg .kontak{font-size:12px;color:var(--pudar)}\n\n/* mode rapat */\n.rapat{position:fixed;inset:0;z-index:90;background:var(--latar);overflow:auto;display:flex;flex-direction:column}\n.rapat-kepala{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--biru);color:#fff;padding:14px 28px;position:sticky;top:0;z-index:2}\n.rapat-kepala b{font-size:22px;display:block}\n.rapat-kepala span{color:#DCE3F5;font-size:14px}\n.rapat-titik{display:flex;gap:8px}\n.rapat-titik button{width:12px;height:12px;border-radius:50%;border:0;background:rgba(255,255,255,.35);cursor:pointer;padding:0}\n.rapat-titik button[aria-current=\"true\"]{background:#fff}\n.rapat-tombol{display:flex;gap:6px}\n.rapat-tombol button{width:44px;height:44px;border-radius:22px;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:20px;cursor:pointer}\n.rapat-tombol button:hover{background:rgba(255,255,255,.25)}\n.rapat-isi{padding:24px 28px 40px;display:flex;flex-direction:column;gap:18px;max-width:1700px;width:100%;margin:0 auto;box-sizing:border-box;zoom:1.12}\n.rapat [data-a=\"klik\"],.rapat [data-a=\"laci\"],.rapat [data-a=\"hubungiIds\"],.rapat [data-in]{pointer-events:none}\n.rapat .btn.polos,.rapat [data-a=\"hubungiIds\"]{display:none}\n@media (min-width:1700px){.rapat-isi{zoom:1.3}}\n@media (max-width:760px){.grid3{grid-template-columns:minmax(0,1fr)}.matriks{grid-template-columns:96px repeat(4,minmax(0,1fr))}}\n\nsvg.grafik .lbl{paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}\n\n.lensa-blok{border-top:1px solid var(--garis);margin-top:14px;padding-top:14px;display:flex;flex-direction:column;gap:6px}\n.btn-sinkron{display:flex;align-items:center;gap:8px;width:100%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;flex-wrap:wrap;text-align:left}\n.btn-sinkron svg{width:16px;height:16px}\n.btn-sinkron small{flex-basis:100%;font-weight:400;font-size:11px;opacity:.8;margin-left:24px;margin-top:-4px}\n.btn-sinkron:hover{background:rgba(255,255,255,.2)}.btn-sinkron:disabled{opacity:.6;cursor:default}\n\n/* ================= LENSA PK 2.0 ================= */\n.grid-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:14px}\n.kpi{background:#fff;border-radius:var(--r);box-shadow:var(--bayang);padding:16px 18px;display:flex;flex-direction:column;gap:4px;cursor:pointer}\n.kpi:hover,.ubin[role=button]:hover,.baris-seg:hover,.baris-kelas:hover,.baris-pk:hover,tr[role=button]:hover{box-shadow:0 0 0 2px var(--biru2),var(--bayang)}\n.kpi-l{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--pudar)}\n.kpi-n{font-size:30px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}\n.kpi-s{font-size:12.5px;color:var(--pudar)}\n.grid-ubin{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}\n.grid-ubin .ubin{box-shadow:none;border:1px solid var(--garis);padding:12px 14px;border-radius:12px;gap:2px}\n.grid-ubin .ubin b{font-size:24px;line-height:1.15}\n.ubin[role=button],.baris-seg,.baris-kelas,.baris-pk,tr[role=button],g[role=button]{cursor:pointer}\n.legenda{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--pudar)}\n.legenda i{display:inline-block;width:12px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}\n.batang{display:flex;height:16px;border-radius:5px;overflow:hidden;background:#EEF0F4;flex:1;min-width:60px}\n.batang.tipis{height:10px}\n.batang span{display:block;height:100%}\n.baris-seg{display:grid;grid-template-columns:minmax(150px,1.2fr) 2fr minmax(130px,1fr);gap:12px;align-items:center;padding:6px 4px;border-radius:8px}\n.baris-kelas{display:grid;grid-template-columns:110px 1fr 100px;gap:10px;align-items:center;padding:4px;border-radius:8px}\n.baris-ef{display:grid;grid-template-columns:1fr 120px 44px;gap:10px;align-items:center;font-size:13px}\n.kanan{text-align:right;font-size:12.5px}\n.catatan{font-size:12.5px;color:var(--pudar);border-top:1px solid var(--garis);padding-top:10px}\n.tabel-wrap{overflow-x:auto}\n.tabel td.r,.tabel th.r{text-align:right}\n.baris-pk{display:grid;grid-template-columns:4px 1fr auto;gap:12px;align-items:center;padding:10px 8px 10px 0;border-top:1px solid var(--garis);border-radius:6px}\n.baris-pk .strip{align-self:stretch;border-radius:2px}\n.pk-isi{display:flex;flex-direction:column;min-width:0}\n.pk-isi b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis}\n.daftar{display:flex;flex-direction:column}\n.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}\n.aksi-baris{display:flex;gap:8px;flex-wrap:wrap}\n.ikon-btn{margin-left:auto;background:none;border:0;color:#fff;width:40px;height:40px;border-radius:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}\n.ikon-btn:hover{background:rgba(255,255,255,.15)}\n.kartu h3{margin:0 0 8px;font-size:15px}\n.kv span{color:var(--pudar)}\n.baris-kontak{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--garis)}\n.pil{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--biruL,#E8EDF8);color:var(--biru)}\n.btn.wa{background:#1F7A56;color:#fff;border-color:#1F7A56}\n.gambar-rinci{width:100%;border:1px solid var(--garis);border-radius:8px;margin-top:10px}\n.tbl-wrap{overflow-x:auto}\ntable.rinci{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}\ntable.rinci th,table.rinci td{padding:6px 8px;border-bottom:1px solid var(--garis);text-align:right}\ntable.rinci th:first-child,table.rinci td:first-child{text-align:left}\ntable.rinci tr.tot td{font-weight:700;border-top:2px solid var(--teks)}\n.daftar-hasil .info{color:var(--pudar)}\nsvg.grafik .grid{stroke:var(--garis)}\nsvg.grafik .ax{font-size:11px}\nsvg.grafik .lbl{font-size:12px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}\nsvg.grafik .ln-ini{fill:none;stroke:#0E5A5F;stroke-width:3}\nsvg.grafik .ln-lalu{fill:none;stroke:#9AA3B2;stroke-width:2}\nsvg.grafik .ln-proy{fill:none;stroke:#0E5A5F;stroke-width:2;stroke-dasharray:5 4}\nsvg.grafik .ln-target{stroke:#C2410C;stroke-width:1.5;stroke-dasharray:6 4}\nsvg.grafik .ln-itb{fill:none;stroke:#1F7A56;stroke-width:2.5}\nsvg.grafik .ln-itw{fill:none;stroke:#3F63B8;stroke-width:2.5}\nsvg.grafik .pt-itb{fill:#1F7A56}\nsvg.grafik .pt-itw{fill:#3F63B8}\n@media (max-width:760px){.baris-seg{grid-template-columns:1fr}.baris-seg .kanan{text-align:left}.kpi-n{font-size:26px}}\n.laci-kepala .btn.polos{color:#fff;border-color:rgba(255,255,255,.4);background:transparent;white-space:nowrap}\n.kepala{margin-bottom:4px}\n.isi>.grid-kpi,.isi>.kartu,.isi>.grid2{margin-bottom:18px}\n/* --- tahap 2: sinkron, PIN, \"Sudah terkirim?\" --- */\n.sisi-bawah .btn-sinkron{width:100%;justify-content:center;margin-bottom:4px}\n.sisi-bawah .kecil,.kecil{font-size:12px}\n.tanya-wa{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#E3F2E9;border:1px solid #BFE0CC;color:#1B4D33;border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:14px}\n.tanya-wa span{flex:1;min-width:160px}\n.form-sinkron{display:flex;flex-direction:column;gap:8px;margin-top:10px}\n.form-sinkron .field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--pudar)}\n.kepala-aksi{display:flex;gap:8px;flex-wrap:wrap}\n@media (max-width:760px){.sisi .btn-sinkron{display:none}}\n\n/* tambahan saat dasbor/data dipasang di dalam aplikasi (Shadow DOM) */\n:host{display:block;color:var(--teks);font:15px/1.45 var(--huruf)}\n.isi{padding:0 0 32px}\n.kepala{margin-top:4px}\n.kepala h1{font-size:20px}\n@media (min-width:760px){.kepala{display:none}}\n@media (max-width:600px){.grid-kpi{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.kpi-n{font-size:22px}}\n.form-sinkron{max-width:760px}\n/* komputer: ukuran huruf kartu bawah dasbor setara kartu angka di atas */\n@media (min-width:760px){\n  table.tabel{font-size:15.5px}\n  .tabel th{font-size:13px;padding:12px 14px}\n  .tabel td{padding:12px 14px}\n  .baris-ef{font-size:15px;grid-template-columns:1fr 160px 52px}\n  .baris-seg,.baris-kelas{font-size:15px}\n  .legenda{font-size:13px}\n  .catatan{font-size:13.5px}\n  .catatan-kecil{font-size:13px}\n  .grid-ubin .ubin b{font-size:clamp(18px,1.45vw,28px);white-space:nowrap}\n  .ubin-kecil b{font-size:28px}.ubin-kecil span{font-size:13px}\n}\n\n/* Perangkat & pengguna (2.3) */\n.lencana{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap;vertical-align:1px}\n.l-aktif{background:#E3F4EC;color:#1F7A56}.l-tutup{background:#FFF1D6;color:#8A5A00}.l-cabut{background:#ECEEF2;color:#5B6470}\n.l-lihat{background:#E8ECF7;color:#2B4FA8}.l-pemilik{background:#F6EBD2;color:#7A5A12}.l-ini{background:#DDEFEF;color:#0E5A5F}\n.baris-mati td{opacity:.6}\n.aksi-sel{white-space:nowrap;text-align:right}.aksi-sel .btn{margin-left:4px}\n.form-undang{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px;margin:6px 0 4px}\n.kode-undangan{border:1.5px dashed #C9972B;background:#FFFBF0;border-radius:12px;padding:12px 14px;margin:0 0 14px}\n.kode-undangan code{display:block;margin:8px 0;padding:10px;background:#fff;border:1px solid #E6DCC3;border-radius:8px;font:13px ui-monospace,Consolas,monospace;word-break:break-all}\n.baris-undangan{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--garis);font-size:13.5px}\n.daftar-undangan{margin-top:8px}\n.riwayat-cabut{margin-top:10px;font-size:13.5px}.riwayat-cabut summary{cursor:pointer;color:var(--pudar);padding:4px 0}\n";
 
 /* === 11-xlsx.js === */
@@ -8120,7 +8561,7 @@ function gambarRincian(p, r) {
  *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
  *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.4.0';
+var VERSI_APP = '2.5.0';
 var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
 function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, antre: [], gagal: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
@@ -8304,6 +8745,14 @@ function bacaTeksBerkas(buf) {
   return teks;
 }
 
+/** Server (LENSA_PK.gs) yang terakhir dihubungi lebih tua dari versi v? (belum pernah sinkron = dianggap baru) */
+function serverSebelum(v) {
+  var a = String((APP.sinkron && APP.sinkron.versiServer) || ''), x = a.split('.'), y = v.split('.');
+  if (!a) return false;
+  for (var i = 0; i < Math.max(x.length, y.length); i++) { var p = +x[i] || 0, q = +y[i] || 0; if (p !== q) return p < q; }
+  return false;
+}
+
 /** Spreadsheet LENSA PK utuh (unduhan File › Download › .xlsx)? */
 function adalahSpreadsheetLensa(lembar) {
   return !!(lembar.STATUS_PK && lembar.PERUSAHAAN && lembar.PENGATURAN);
@@ -8312,6 +8761,8 @@ function adalahSpreadsheetLensa(lembar) {
 /**
  * Berkas → impor. Laporan sistem (CSV/XLSX) lewat imporGrid_ (aturan pembina HA187580 tetap berlaku),
  * unduhan spreadsheet LENSA PK (.xlsx semua tab) → seluruh data dipindah ke perangkat.
+ * 2.5 (LENSA Suite 2A): laporan diurai sekali di perangkat (modul Impor bersama); yang dikirim ke server hanya
+ * laporan ringkas. Server menyimpannya sekali di Gudang Laporan KC (dipakai juga Monitor SPPG).
  */
 async function imporBerkas(files) {
   siapkanMesin();
@@ -8344,9 +8795,16 @@ async function imporBerkas(files) {
   // tab dari unduhan spreadsheet bisa versi lama: kosongkan VERSI_DB agar kolom baru disiapkan (pastikanSiap_)
   if (spreadsheet) { delete GAS.props.VERSI_DB; siapkanMesin(); muatPengaturan_(); APP.sinkron.hash = {}; }
   antre.sort(function (a, b) { return (PRIORITAS_IMPOR[a.an.jenis] - PRIORITAS_IMPOR[b.an.jenis]) || (a.nama < b.nama ? -1 : 1); });
-  var kirim = [];
-  antre.forEach(function (x) { var h = imporGrid_(x.nama, x.grid, x.an); hasil.push(h); if (h.ok) kirim.push({ nama: x.nama, grid: x.grid }); });
-  if (kirim.length) antreOp('apiImporApp', [kirim]); // spreadsheet ikut diperbarui saat sinkron
+  var kirim = [], serverLama = serverSebelum('1.23');
+  antre.forEach(function (x) {
+    var h = imporGrid_(x.nama, x.grid, x.an), keGudang = !!(h.lr && KitImpor.GUDANG[h.lr.jenis]);
+    if (!h.ok && keGudang && !serverLama) h.ringkas += ' · laporan tetap dikirim ke Gudang Laporan KC untuk aplikasi lain';
+    hasil.push(h);
+    if (serverLama) { if (h.ok) kirim.push({ nama: x.nama, grid: x.grid }); }
+    else if (h.lr && (h.ok || keGudang)) kirim.push(h.lr);
+  });
+  // spreadsheet ikut diperbarui saat sinkron; LENSA_PK.gs ≤ 1.22 belum mengenal laporan ringkas → berkas utuh seperti dulu
+  if (kirim.length) antreOp(serverLama ? 'apiImporApp' : 'apiImporLaporan', [kirim]);
   var ok = hasil.some(function (h) { return h.ok; });
   if (ok) {
     var hit = hitungUlang_();
@@ -8382,7 +8840,7 @@ function bacaTabAman(nama) {
  * ---------------------------------------------------------------------- */
 var FN_TULIS = ['apiSimpanPk', 'apiGeotag', 'apiKelompok', 'apiGantiKelompok', 'apiSimpanKontak', 'apiLepasKontak', 'apiSimpanPengurus',
   'apiPkKontak', 'apiSatukanOrang', 'apiCatat', 'apiSimpanTemplat', 'apiHapusTemplat', 'apiCentang', 'apiCentangPk', 'apiSimpanJadwal', 'apiHitung', 'apiImporApp',
-  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi'];
+  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi', 'apiImporLaporan'];
 /** Hanya bisa di server (butuh internet / spreadsheet lain). */
 var FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg'];
 var SINK = { janji: null, tunda: null, setelah: null, berjalan: false };
@@ -8416,7 +8874,7 @@ function jalankan(fn, args) {
 function antreOp(fn, args) {
   APP.sinkron.antre.push({ cid: idOp(), fn: fn, args: args, t: Date.now() });
   simpanNanti();
-  if (sinkronAktif()) jadwalSinkron(fn === 'apiImporApp' ? 500 : 3000);
+  if (sinkronAktif()) jadwalSinkron(fn === 'apiImporApp' || fn === 'apiImporLaporan' ? 500 : 3000);
 }
 function jumlahAntre() { return (APP.sinkron.antre || []).length; }
 
@@ -8433,7 +8891,7 @@ async function panggilServer(isi, url, kred) {
     r = await fetch(url || s.url, {
       method: 'POST', redirect: 'follow', cache: 'no-store',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ versiApp: VERSI_APP, perangkat: labelPerangkat(), antre: jumlahAntre() }, kred, isi))
+      body: JSON.stringify(Object.assign({ versiApp: VERSI_APP, perangkat: labelPerangkat(), antre: jumlahAntre(), alamat: url || s.url }, kred, isi)) // alamat: dicatat server sebagai alamat Hub
     });
   } catch (e) { throw new Error('Tidak terhubung ke internet / server.'); }
   if (!r.ok) throw new Error('Server sinkron menjawab ' + r.status);
