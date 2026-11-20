@@ -1628,6 +1628,116 @@ var KitImpor = (function () {
     rusakExcel: rusakExcel, kelasDariTeks: kelasDariTeks, judulKata: judulKata
   };
 })();
+/* =====================================================================
+ *  KitKontak — aturan kontak bersama LENSA Suite (Tahap 2B · Buku Kontak).
+ *  Satu orang dikenali dari nomor HP (10 angka terakhir), atau dari email yang sama + nama yang mirip.
+ *  Dipakai Hub (Apps Script), mesin LENSA, aplikasi LENSA (usulan penggabungan), dan Monitor SPPG. ES5 murni.
+ * ===================================================================== */
+var KitKontak = (function () {
+  'use strict';
+  var VERSI = '1.0';
+
+  // kata yang tidak menunjukkan orang tertentu: gelar, sapaan, nama depan yang sangat lazim
+  var GELAR = { bapak: 1, bpk: 1, bp: 1, pak: 1, ibu: 1, bu: 1, h: 1, hj: 1, haji: 1, hajjah: 1, dr: 1, drs: 1, dra: 1, ir: 1, kh: 1,
+    ust: 1, ustadz: 1, ustadzah: 1, sdr: 1, sdri: 1, mas: 1, mbak: 1, mba: 1, st: 1, se: 1, sh: 1, mh: 1, mm: 1, spd: 1, ssos: 1, skm: 1, amd: 1, ama: 1 };
+  var LEMAH = {};
+  ('desa dusun jalan kontak nomor haji hajjah moh mohammad muhammad muhamad mochammad achmad ahmad abdul siti nur nurul bin binti dan dari untuk dengan ' +
+    'admin staff staf kepala ketua bendahara sekretaris pemilik direktur hrd kantor').split(' ').forEach(function (k) { LEMAH[k] = 1; });
+
+  function teks(v) { return v === null || v === undefined ? '' : String(v); }
+
+  /** Nomor HP → 62xxxxxxxxx ('' bila tidak terbaca atau rusak oleh Excel, mis. 6.28E+12). */
+  function hp(v) {
+    var s = teks(v).trim();
+    if (!s || /^\d+(\.\d+)?e\+?\d+$/i.test(s)) return '';
+    s = s.replace(/\.0+$/, '').replace(/[^\d]/g, '');
+    if (!s) return '';
+    if (s.indexOf('62') === 0) { /* tetap */ } else if (s.charAt(0) === '0') s = '62' + s.slice(1); else if (s.charAt(0) === '8') s = '62' + s;
+    return s.length >= 9 && s.length <= 15 ? s : '';
+  }
+  /** Kunci HP: 10 angka terakhir (sama dengan pembanding lama di layar Grup LENSA). */
+  function hp10(v) { var n = hp(v); return n ? n.slice(-10) : ''; }
+  function email(v) { var s = teks(v).trim().toLowerCase(); return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ? s : ''; }
+
+  /** Nama dirapikan untuk dibandingkan: huruf kecil, tanpa tanda baca dan gelar. */
+  function nama(v) {
+    // gelar bertitik (S.Pd, A.Md, S.Kom, M.M) dibuang dulu; "H. Ahmad" tidak kena karena ada spasi
+    return teks(v).toLowerCase().replace(/\b[a-z]{1,2}\.[a-z]{1,4}\b\.?(\.?[a-z]\b\.?)?/g, ' ').replace(/[^a-z0-9]+/g, ' ').split(' ').filter(function (t) { return t && !GELAR[t]; }).join(' ');
+  }
+  function kataKuat(n) { return n.split(' ').filter(function (t) { return t.length >= 4 && !LEMAH[t] && !/^\d+$/.test(t); }); }
+  /** Nama mirip: sama setelah dirapikan, berbagi satu kata kuat (≥ 4 huruf, bukan kata lazim), atau yang satu memuat yang lain. */
+  function namaMirip(a, b) {
+    var x = nama(a), y = nama(b);
+    if (!x || !y) return false;
+    if (x === y) return true;
+    var kx = kataKuat(x), ky = kataKuat(y);
+    if (kx.some(function (t) { return ky.indexOf(t) >= 0; })) return true;
+    return Math.min(x.length, y.length) >= 5 && (x.indexOf(y) >= 0 || y.indexOf(x) >= 0);
+  }
+
+  /** o = { nama, wa, hp2, email } → identitas */
+  function identitas(o) {
+    var h = [hp10(o.wa), hp10(o.hp2)].filter(Boolean);
+    return { hp: h, email: email(o.email), nama: nama(o.nama) };
+  }
+  /** Kunci tetap seorang kontak (tidak memakai ID): HP utama + nama, atau email + nama, atau nama saja. */
+  function kunciOrang(o) {
+    var i = identitas(o);
+    return (i.hp.length ? 'h:' + i.hp[0] : i.email ? 'e:' + i.email : '') + '|n:' + i.nama;
+  }
+  /** Kunci jawaban "Bukan" / "Satukan" untuk sepasang kontak: tetap sama walau kontaknya tercipta ulang dengan ID baru. */
+  function kunciPasangan(a, b) { return 'I:' + [kunciOrang(a), kunciOrang(b)].sort().join('~'); }
+
+  /** Sama persis: nama sama setelah dirapikan, HP sama (atau keduanya kosong), email sama atau salah satu kosong, dan ada HP/email yang sama. */
+  function samaPersis(a, b) {
+    var x = identitas(a), y = identitas(b);
+    if (!x.nama || x.nama !== y.nama) return false;
+    var hpSama = x.hp.length && y.hp.length && x.hp[0] === y.hp[0];
+    var hpKosong = !x.hp.length && !y.hp.length;
+    var emSama = x.email && x.email === y.email, emBoleh = !x.email || !y.email || emSama;
+    return (hpSama || (hpKosong && emSama)) && emBoleh;
+  }
+
+  /** Mengikuti "Digabung ke" sampai kontak tujuan (peta: id → orang; orang.digabung_ke). */
+  function ikutiGabung(o, peta) {
+    var n = 0;
+    while (o && o.digabung_ke && peta[o.digabung_ke] && n++ < 10) o = peta[o.digabung_ke];
+    return o;
+  }
+
+  /**
+   * Mencari orang yang sama di daftar (o: { id, nama, wa, hp2, email, status, digabung_ke }).
+   * HP sama → orang yang sama; tanpa HP yang sama: email sama + nama mirip. Kontak yang sudah digabung diikuti ke tujuannya;
+   * kontak aktif didahulukan. Hasil { orang, alasan: 'hp' | 'email' } atau null.
+   */
+  function cocok(calon, daftar) {
+    var c = identitas(calon), peta = {};
+    daftar.forEach(function (o) { peta[o.id] = o; });
+    var aktif = function (o) { return o.status !== 'Tidak aktif' && o.status !== 'Digabung' && !o.digabung_ke; };
+    var pilih = function (hasil) {
+      if (!hasil.length) return null;
+      var t = hasil.map(function (o) { return ikutiGabung(o, peta); });
+      return t.filter(aktif)[0] || t[0];
+    };
+    if (c.hp.length) {
+      var hHp = daftar.filter(function (o) { var x = identitas(o); return x.hp.some(function (h) { return c.hp.indexOf(h) >= 0; }); });
+      var o1 = pilih(hHp);
+      if (o1) return { orang: o1, alasan: 'hp' };
+    }
+    if (c.email) {
+      var hEm = daftar.filter(function (o) { return email(o.email) === c.email && namaMirip(o.nama, calon.nama); });
+      var o2 = pilih(hEm);
+      if (o2) return { orang: o2, alasan: 'email' };
+    }
+    return null;
+  }
+
+  return {
+    VERSI: VERSI, hp: hp, hp10: hp10, email: email, nama: nama, namaMirip: namaMirip, identitas: identitas,
+    kunciOrang: kunciOrang, kunciPasangan: kunciPasangan, samaPersis: samaPersis, ikutiGabung: ikutiGabung, cocok: cocok
+  };
+})();
+window.KitKontak = KitKontak;
 /* ======================================================================
  *  KIT LENSA Suite · redaksi.js 1.0 — penyusun pesan WhatsApp bersama.
  *  Dipakai di: mesin LENSA (Apps Script dan perangkat), aplikasi LENSA PK, Monitor SPPG.
@@ -2343,7 +2453,7 @@ var CSS_PESAN_WA = "*{box-sizing:border-box}\n.modul-wa{font:15px/1.45 system-ui
  * ==========================================================================
  */
 
-var VERSI = '1.23';
+var VERSI = '1.24';
 var TZ = 'Asia/Jakarta';
 var _HARI_INI_UJI = null; // khusus pengujian; biarkan null
 
@@ -4170,8 +4280,10 @@ function perbaruiMasterDariDbu_(rows, m, periode) {
         catatan: 'Terapkan hanya mengganti teks alamat; desa dan kecamatan yang sudah diisi tetap.', data: JSON.stringify({ kabupaten: d.kabupaten }) });
     }
     var hp = normHp_(d.pic_hp);
-    var idAda = hp ? hpKe[hp] : null;
-    if ((hp && !(idAda && relasiAda[d.npp + '|' + idAda])) || (!hp && d.pic_nama && !tR.some(function (r) { return r.npp === d.npp; }))) {
+    var calonP = pengurusDariDbu_(d), samaP = (d.pic_nama || hp) ? cariPengurus_(tP, { nama: calonP.nama, wa: d.pic_hp, email: d.pic_email }) : null;
+    var idAda = samaP ? samaP.id_pengurus : (hp ? hpKe[hp] : null);
+    if (idAda && relasiAda[d.npp + '|' + idAda]) { /* kontak ini sudah memegang PK ini (1.24: juga lewat email + nama / Digabung ke) */ }
+    else if ((hp && !(idAda && relasiAda[d.npp + '|' + idAda])) || (!hp && d.pic_nama && (samaP || !tR.some(function (r) { return r.npp === d.npp; })))) {
       var c = pengurusDariDbu_(d);
       usul.push({ jenis: 'Kontak baru', npp: d.npp, nama: ms.nama_perusahaan, kolom: 'kontak', nilai_lama: '',
         nilai_baru: c.nama + ' (' + (c.jabatan_umum || c._peran) + ') ' + (c.no_wa || c.no_hp_2), data: JSON.stringify({ pengurus: c }) });
@@ -4242,7 +4354,8 @@ function terapkanTinjau_() {
   function sambungPengurus(npp, c, utama) {
     if (!c) return;
     var hp = hpSeluler_(c.no_wa);
-    var p = hp ? hpKe[hp] : null;
+    // 1.24: HP (WA atau HP kedua) / email + nama; kontak yang sudah disatukan diikuti ke tujuannya
+    var p = cariPengurus_(peng, { nama: c.nama, wa: c.no_wa, hp2: c.no_hp_2, email: c.email }) || (hp ? hpKe[hp] : null);
     if (!p) {
       p = {};
       Object.keys(c).forEach(function (k) { if (k.charAt(0) !== '_') p[k] = c[k]; });
@@ -6687,7 +6800,8 @@ function apiMuat() {
     templat: { tanda: P_('penanda_daftar') || '📌' }, redaksi: barisRedaksi_(), batasHari: Pn_('batas_aman_posting'),
     analisa: modulAktif_('analisa'), pk: pk, jadwal: jadwal, hariIniData: hariIni, dihubungi: dihubungi_(logs), risiko: modulAktif_('analisa') ? bacaAppData_('risiko') : null,
     kecamatan: kec, desa: Object.keys(desa).reduce(function (o, k) { o[k] = Object.keys(desa[k]).sort(); return o; }, {}),
-    tinjau: tinjauApi_(), usulanBukan: String(P_('usulan_bukan') || '').split(',').filter(String)
+    tinjau: tinjauApi_(), usulanBukan: String(P_('usulan_bukan') || '').split(',').filter(String),
+    bukuKontak: String(P_('buku_kontak') || '') // 1.24: ringkasan Buku Kontak (LENSA Suite 2B)
   });
 }
 
@@ -6874,7 +6988,7 @@ function apiSimpanKontak(npp, k) {
     var peng = bacaTab_('PENGURUS').data, rel = bacaTab_('RELASI').data;
     var p = null;
     if (k.id) p = peng.filter(function (x) { return String(x.id_pengurus) === String(k.id); })[0] || null;
-    if (!p && hp) p = peng.filter(function (x) { return normHp_(x.no_wa) === hp || normHp_(x.no_hp_2) === hp; })[0] || null;
+    if (!p && (hp || k.email)) p = cariPengurus_(peng, { nama: nama, wa: hp, email: teksApi_(k.email) }); // 1.24: HP / email + nama, ikuti "Digabung ke"
     var nomor = hp ? hpTampil_(hp) : '';
     if (p) {
       p.nama = nama;
@@ -6912,6 +7026,26 @@ function apiSimpanKontak(npp, k) {
     bacaTab_('PENGURUS').data.forEach(function (x) { pp[String(x.id_pengurus)] = x; });
     return bersihApi_({ ok: true, kontak: kontakPk_(pp, bacaTab_('RELASI').data)[npp] || [] });
   } finally { lock.releaseLock(); }
+}
+
+/* ---------- 1.24 (LENSA Suite 2B): pencocokan kontak bersama (kit/kontak.js) ----------
+ * Satu orang = HP sama, atau email sama + nama mirip. Kontak yang sudah disatukan ("Digabung ke …") diikuti ke tujuannya,
+ * sehingga impor dan isian kontak tidak menghidupkan kontak lama lagi. */
+function tujuanGabung_(p) {
+  if (!p || p.status !== 'Tidak aktif') return '';
+  var m = String(p.catatan || '').match(/Digabung ke (\S+?)(?:\s|\(|;|$)/g);
+  if (!m) return '';
+  var akhir = m[m.length - 1].match(/Digabung ke (\S+?)(?:\s|\(|;|$)/);
+  return akhir ? akhir[1] : '';
+}
+function orangDariPengurus_(p) {
+  return { id: String(p.id_pengurus), nama: teksApi_(p.nama), wa: teksApi_(p.no_wa), hp2: teksApi_(p.no_hp_2), email: teksApi_(p.email),
+    status: p.status === 'Tidak aktif' ? 'Tidak aktif' : 'Aktif', digabung_ke: tujuanGabung_(p), _p: p };
+}
+/** Orang yang sama di PENGURUS untuk calon { nama, wa, hp2, email } → baris PENGURUS (tujuan gabung) atau null. */
+function cariPengurus_(peng, calon) {
+  var c = KitKontak.cocok(calon, peng.map(orangDariPengurus_));
+  return c ? c.orang._p : null;
 }
 
 /** Melepas kontak dari PK (relasi dinonaktifkan; data orangnya tetap). */
@@ -7771,6 +7905,7 @@ function jembatanSppg() {
     h.keluar += kirimPerubahanSppg_(h.masuk > 0 || baruDipasang);
     // 1.23: laporan unggahan Monitor di Gudang Laporan KC yang belum sempat diolah LENSA (permintaan terputus)
     if (typeof hubOlahTertunda_ === 'function') { try { hubOlahTertunda_(); } catch (eH) { catatGalat_('hubOlahTertunda_', eH.message, VERSI, 'pemicu'); } }
+    if (typeof hubSetelahLensa_ === 'function') { try { hubSetelahLensa_(); } catch (eK) { catatGalat_('hubSetelahLensa_', eK.message, VERSI, 'pemicu'); } }
     pr.setProperty('SPPG_VERSI', VERSI);
     pr.setProperty('SPPG_TERAKHIR', sekarangStr_());
     pr.deleteProperty('SPPG_GALAT');
@@ -7963,6 +8098,8 @@ function msTanggal_(s) {
 }
 
 function kirimPerubahanSppg_(paksa) {
+  // 1.24: Monitor 1.7 mengambil PIC, catatan, dan Pustaka Redaksi dari Hub (Buku Kontak); jembatan hanya untuk gadget lama
+  if (typeof hubBukuAktif_ === 'function' && hubBukuAktif_() && !monitorLama_('1.7.0')) return 0;
   var pr = sppgProp_(), diubah = 0;
   try { diubah = DriveApp.getFileById(ss_().getId()).getLastUpdated().getTime(); } catch (e) { diubah = 0; }
   if (!paksa && diubah && String(diubah) === pr.getProperty('SPPG_DIUBAH')) return 0; // spreadsheet tidak berubah sejak putaran lalu
@@ -8024,7 +8161,7 @@ function kirimPerubahanSppg_(paksa) {
 function kirimBerkasSppg_(lr, data) {
   if (_DARI_SPPG || !sppgAktif_() || !SPPG_JENIS_LAPORAN[lr.jenis]) return;
   var iNpp = lr.kolom.indexOf('npp');
-  if (iNpp < 0 || !monitorLama_()) return;
+  if (iNpp < 0 || !monitorLama_('1.6.0')) return;
   var segmen = nppSppgLensa_(), milik = {};
   data.forEach(function (r) { var n = rapikanNpp_(r.npp); if (n) milik[n] = true; });
   var baris = lr.baris.filter(function (r) { var n = rapikanNpp_(r[iNpp]); return n && milik[n] && (segmen[n] || namaSppg_(r.join(' '))); });
@@ -8036,21 +8173,26 @@ function kirimBerkasSppg_(lr, data) {
 
 /** Masih ada perangkat Monitor SPPG versi lama (< 1.6.0) yang aktif dalam 14 hari terakhir? (Sheet Monitor, tab PERANGKAT) */
 var _MONITOR_LAMA = null;
-function monitorLama_() {
-  if (_MONITOR_LAMA !== null) return _MONITOR_LAMA;
-  _MONITOR_LAMA = true;
+/** 1.24: batas versi — '1.6.0' (berkas laporan, 2A) atau '1.7.0' (PIC, catatan, redaksi, 2B). */
+function monitorLama_(batasVersi) {
+  batasVersi = batasVersi || '1.6.0';
+  if (_MONITOR_LAMA === null || typeof _MONITOR_LAMA !== 'object') _MONITOR_LAMA = {};
+  if (_MONITOR_LAMA[batasVersi] !== undefined) return _MONITOR_LAMA[batasVersi];
+  var hasil = true;
   try {
     var sh = SpreadsheetApp.openById(sppgProp_().getProperty('SPPG_ID')).getSheetByName('PERANGKAT');
-    if (!sh || sh.getLastRow() < 2) return _MONITOR_LAMA;
-    var v = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues(), k = v[0].map(String);
-    var iSt = k.indexOf('status'), iVer = k.indexOf('versi_app'), iSink = k.indexOf('terakhir_sinkron');
-    var batas = fmt_(new Date(Date.now() - 14 * 86400000), 'yyyy-MM-dd');
-    _MONITOR_LAMA = v.slice(1).some(function (r) {
-      var t = r[iSink] instanceof Date ? fmt_(r[iSink], 'yyyy-MM-dd') : String(r[iSink] || '').slice(0, 10);
-      return r[iSt] === 'Aktif' && t >= batas && versiLebihKecil_(String(r[iVer] || ''), '1.6.0');
-    });
-  } catch (e) { _MONITOR_LAMA = true; }
-  return _MONITOR_LAMA;
+    if (sh && sh.getLastRow() >= 2) {
+      var v = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues(), k = v[0].map(String);
+      var iSt = k.indexOf('status'), iVer = k.indexOf('versi_app'), iSink = k.indexOf('terakhir_sinkron');
+      var batas = fmt_(new Date(Date.now() - 14 * 86400000), 'yyyy-MM-dd');
+      hasil = v.slice(1).some(function (r) {
+        var t = r[iSink] instanceof Date ? fmt_(r[iSink], 'yyyy-MM-dd') : String(r[iSink] || '').slice(0, 10);
+        return r[iSt] === 'Aktif' && t >= batas && versiLebihKecil_(String(r[iVer] || ''), batasVersi);
+      });
+    }
+  } catch (e) { hasil = true; }
+  _MONITOR_LAMA[batasVersi] = hasil;
+  return hasil;
 }
 function versiLebihKecil_(a, b) {
   var x = String(a).split('.'), y = String(b).split('.');
@@ -8188,6 +8330,8 @@ function jalankanApp_(ops, ctx) {
     try { peta[op.fn].apply(null, op.args || []); }
     catch (er) { catatGalat_('LENSA 2.x · ' + op.fn, er.message, VERSI, (ctx && ctx.perangkat) || 'aplikasi'); throw er; } // gagal karena data (mis. PK tidak ada): tidak diulang terus
   }, APP_FN_TULIS, function (cid) { return sudahDiproses_('app:' + cid); }, function (cid) { tandaiDiproses_('app:' + cid); });
+  // 1.24: perubahan kontak & catatan dari LENSA langsung diteruskan ke Buku Kontak (Hub, berkas Hub.gs)
+  if (typeof hubSetelahLensa_ === 'function') { try { hubSetelahLensa_(); } catch (eH) { catatGalat_('hubSetelahLensa_', eH.message, VERSI, 'server'); } }
   return { ok: true, hasil: out };
 }
 
@@ -8561,7 +8705,7 @@ function gambarRincian(p, r) {
  *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
  *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.5.0';
+var VERSI_APP = '2.6.0';
 var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
 function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, antre: [], gagal: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
@@ -9533,6 +9677,7 @@ function kartuSinkron() {
   return kartu('Sinkron ke spreadsheet LENSA PK', 'otomatis saat dibuka, tiap 5 menit, dan sesudah setiap catatan',
     '<div class="kv"><span>Status</span><b data-status-sinkron>' + e(teksStatusSinkron()) + '</b><span>Mesin di spreadsheet</span><b>' + e(sk.versiServer || '–') + '</b>' +
     '<span>Belum terkirim</span><b>' + jumlahAntre() + ' tindakan</b>' +
+    (S.data && S.data.bukuKontak ? '<span>Buku Kontak</span><b>' + e(S.data.bukuKontak) + '</b>' : '') + // 2.6: LENSA Suite 2B
     (ak && !lama ? '<span>Masuk sebagai</span><b>' + e(ak.pengguna) + ' · ' + e(ak.peran === 'Pemilik' ? 'pemilik' : 'pengguna') + ' · ' + (ak.hak === 'Lihat' ? 'hanya lihat' : 'boleh mengubah') + '</b>' +
       '<span>Perangkat ini</span><b>' + e(labelPerangkat()) + ' · ' + e(ak.idp) + '</b>' + (ak.berlakuSampai ? '<span>Akses sampai</span><b>' + e(tglIndo(ak.berlakuSampai)) + '</b>' : '') : '') + '</div>' +
     (lama ? '<div class="catatan" style="margin-top:8px">Perangkat ini masih memakai KUNCI lama' + (sk.serverLama ? ' karena LENSA_PK.gs di spreadsheet belum versi 1.21. Pasang LENSA_PK.gs terbaru, lalu perangkat ini terdaftar otomatis.' : '; akan terdaftar otomatis saat sinkron berikutnya.') + '</div>' : '') +
@@ -11313,10 +11458,14 @@ function usulanGabung() {
     if (ids.length < 2) return;
     ids.sort(function (a, b) { return orang[b].pk.length - orang[a].pk.length; });
     ids.slice(1).forEach(function (b) {
-      var kunci = 'S:' + [ids[0], b].sort().join('|');
-      if (bukan[kunci] || ada[kunci]) return;
+      var kunciLama = 'S:' + [ids[0], b].sort().join('|');
+      // LENSA Suite 2B: "Bukan" diingat per pasangan identitas (HP/email + nama), tetap berlaku walau kontak tercipta ulang
+      var KK = window.KitKontak, ka = orang[ids[0]].k, kb = orang[b].k;
+      var kunci = KK ? KK.kunciPasangan({ nama: ka.nama, wa: ka.hp, email: ka.email }, { nama: kb.nama, wa: kb.hp, email: kb.email }) : kunciLama;
+      if (bukan[kunci] || bukan[kunciLama] || ada[kunci]) return;
       ada[kunci] = 1;
-      out.push({ jenis: 'satukan', kunci: kunci, a: ids[0], b: b, ka: orang[ids[0]], kb: orang[b], alasan: kk[0] === 'h' ? 'nomor HP sama' : 'email sama' });
+      var persis = !!(KK && KK.samaPersis({ nama: ka.nama, wa: ka.hp, email: ka.email }, { nama: kb.nama, wa: kb.hp, email: kb.email }));
+      out.push({ jenis: 'satukan', kunci: kunci, a: ids[0], b: b, ka: orang[ids[0]], kb: orang[b], persis: persis, alasan: (kk[0] === 'h' ? 'nomor HP sama' : 'email sama') + (persis ? ', nama sama persis' : '') });
     });
   });
   var tok = function (p) { return norm(p.namaResmi || p.nama).split(' ').filter(function (t, i, a) { return t.length >= 4 && !umum[t] && !/^\d+$/.test(t) && a.indexOf(t) === i; }); };
@@ -11348,6 +11497,8 @@ function usulanGabung() {
         alasan: 'nama mirip ("' + t + '"), ' + (x.desa && x.desa === y.desa ? 'desa ' + x.desa : 'kecamatan ' + x.kecamatan) });
     }
   });
+  out.sort(function (x, y) { return (y.persis ? 1 : 0) - (x.persis ? 1 : 0); }); // yang sama persis di atas
+  S.usulanSemua = out;
   S.usulan = out.slice(0, 30);
   return S.usulan;
 }
@@ -11405,8 +11556,11 @@ function blokUsulan() {
   var out = '<button class="gol g-usul' + (buka ? ' buka' : '') + '" data-a="usulbuka" aria-expanded="' + buka + '">' +
     '<svg class="panah" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>' +
     '<span class="tengah"><span class="t1">Usulan penggabungan</span><br><span class="kecil">Mungkin satu orang atau satu pemilik; periksa sebelum menyatukan</span></span>' +
-    '<span class="kanan"><b>' + u.length + '</b></span></button>';
+    '<span class="kanan"><b>' + (S.usulanSemua && S.usulanSemua.length > u.length ? u.length + ' dari ' + S.usulanSemua.length : u.length) + '</b></span></button>';
   if (!buka) return out;
+  var persis = (S.usulanSemua || []).filter(function (x) { return x.persis; }).length;
+  if (persis) out += '<div class="tahap"><b>' + persis + '</b> usulan nama, nomor HP, dan email (bila ada) sama persis. ' +
+    '<button class="btn utama" data-a="usulsatukansemua">Satukan semua yang sama persis (' + persis + ')</button></div>';
   /* LENSA 2.0 tanpa sinkron: keputusan hanya tersimpan di perangkat ini, perangkat lain tidak tahu */
   if (window.__lensa2 && !window.__lensa2.aktif()) out += '<div class="tahap peringatan-usul">Perangkat ini belum tersambung sinkron. Keputusan <b>Satukan/Bukan</b> hanya tersimpan di sini dan baru terkirim ke HP/perangkat lain setelah tersambung (Data &amp; pengaturan › Sinkron).</div>';
   return out + '<div class="gol-isi daftar">' + u.map(function (x) {
@@ -12368,6 +12522,27 @@ var AKSI = {
     S.data.usulanBukan = (S.data.usulanBukan || []).concat([v]);
     kirim('apiUsulanBukan', [v], 'Usulan disembunyikan', true);
     render(); toast('Usulan disembunyikan (diingat di spreadsheet, berlaku juga di perangkat lain)');
+  },
+  usulsatukansemua: function (v, btn) {
+    var daftar = (S.usulanSemua || []).filter(function (x) { return x.persis; });
+    if (!daftar.length) return;
+    if (!btn.classList.contains('yakin')) {
+      btn.classList.add('yakin'); btn.textContent = 'Yakin satukan ' + daftar.length + ' pasang? Ketuk lagi';
+      setTimeout(function () { if (document.body.contains(btn) && !btn.disabled) { btn.classList.remove('yakin'); btn.textContent = 'Satukan semua yang sama persis (' + daftar.length + ')'; } }, 5000);
+      return;
+    }
+    sibuk(btn, true);
+    // kontak yang sudah disatukan diganti tujuannya, agar rantai A←B←C tidak memakai kontak yang sudah nonaktif
+    var ganti = {}, n = 0, tujuan = function (id) { var k = 0; while (ganti[id] && k++ < 20) id = ganti[id]; return id; };
+    var jalan = daftar.reduce(function (p, x) {
+      return p.then(function () {
+        var a = tujuan(x.a), b = tujuan(x.b);
+        if (a === b) return null;
+        return panggil('apiSatukanOrang', a, b).then(function (h) { ganti[b] = a; n++; terapkanKontakPk(h.kontak); });
+      });
+    }, Promise.resolve());
+    jalan.then(function () { render(); toast(n + ' pasang kontak disatukan. Daftar Hari ini ikut menyatu setelah hitung ulang'); })
+      .catch(function (er) { render(); toast((n ? n + ' pasang disatukan, lalu terhenti: ' : '') + er.message, true); });
   },
   usultambah: function (v) {
     var u = (S.usulan || []).filter(function (x) { return x.kunci === v; })[0];
