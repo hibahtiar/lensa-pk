@@ -247,6 +247,29 @@ svg.pareto .kum{fill:none;stroke:var(--biru);stroke-width:2}svg.pareto .kum-l{fi
 .kontak-baris .tengah.ketuk .nm:after{content:'\203A';margin-left:5px;color:var(--pudar);font-weight:400}
 .item .lepas{width:34px;height:34px;border-radius:17px;border:1px solid var(--garis);background:#fff;color:var(--pudar);font-size:16px;line-height:1;flex:none;cursor:pointer;margin-left:6px}
 .item .lepas.yakin{width:auto;padding:0 10px;border-radius:17px;background:var(--merahL);color:var(--merah);border-color:var(--merahL);font-size:12.5px;font-weight:600}
+.k360-npp{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.k360-npp .chip{font-size:12px;text-align:left;white-space:normal;max-width:100%;height:auto;line-height:1.35;padding-top:6px;padding-bottom:6px}.k360-npp .chip i{font-style:normal;color:var(--pudar)}
+.k360-label{font-size:12px;font-weight:700;color:var(--pudar);margin:6px 0 4px}
+.k360-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:3px}
+.k360-sel{position:relative;height:32px;border-radius:6px;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;color:#fff;font-style:normal}
+.k360-sel i{position:absolute;top:1px;right:3px;font-size:8.5px;font-style:normal;opacity:.9}
+.k-tepat{background:#15803D}.k-telat{background:#D97706}.k-lunas{background:#A7D8B5;color:#14532D}.k-tunggak{background:#B91C1C}
+.k-berjalan{background:#EFF6FF;color:#1E3A8A;border:1.5px dashed #93C5FD}.k-belum-peserta{background:#F1F5F9;color:#94A3B8}
+.k360-legenda{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--pudar)}.k360-legenda span{display:inline-flex;align-items:center;gap:5px}
+.k360-legenda .k360-sel{width:14px;height:14px;border-radius:4px;display:inline-block}
+.k360-bar{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:3px;height:92px;align-items:end}
+.k360-bar div{position:relative;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}
+.k360-bar b{display:block;width:100%;max-height:62px;background:var(--biru);border-radius:4px 4px 0 0;opacity:.85}
+.k360-bar span{font-size:10px;font-weight:700;order:-1;color:var(--teks)}.k360-bar i{font-size:10px;font-style:normal;color:var(--pudar)}
+.k360-rapor-hijau{background:var(--hijauL);color:var(--hijau)}.k360-rapor-kuning{background:var(--kuningL);color:var(--kuning)}.k360-rapor-merah{background:var(--merahL);color:var(--merah)}
+.k360-sumber-lensa{background:#E0F2F1;color:#0E5A5F}.k360-sumber-monitor{background:#E0E7FF;color:#1F3E8C}.k360-sumber-myt{background:#F3E8F7;color:#5B2A6E}.k360-sumber-sigap{background:#FFF1E6;color:#9A3412}.k360-sumber-lain{background:#F1F5F9;color:#334155}
+.k360-app-judul{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.k360-app+.k360-app{margin-top:12px;padding-top:12px;border-top:1px solid var(--garis)}
+.k360-r{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--garis)}.k360-r:first-child{border-top:0}.k360-r.agenda{background:linear-gradient(90deg,rgba(201,151,43,.08),transparent)}
+.k360-r-tgl{width:66px;flex:none;font-size:12px;color:var(--pudar);font-weight:600}
+.calon-grup{padding:10px 12px}.calon-grup.on{border-color:var(--biru);box-shadow:0 0 0 1px var(--biru) inset}
+.baris-calon{display:flex;align-items:center;gap:8px}.baris-calon .inp{flex:1;min-width:0;margin:0}.baris-calon.pk{margin:4px 0 0 4px;font-size:13.5px}
+.cek-kotak{width:26px;height:26px;flex:none;border-radius:7px;border:2px solid var(--garis);background:#fff;color:#fff;font-weight:800;font-size:15px;line-height:1;cursor:pointer;padding:0}
+.cek-kotak.kecil{width:20px;height:20px;border-radius:5px;font-size:12px}.cek-kotak.on{background:var(--biru);border-color:var(--biru)}
+.btn.bahaya.yakin{background:var(--merahL);border-color:var(--merahL)}
 .info-hitung{display:flex;align-items:center;gap:10px;background:var(--kuningL);color:#5E430D;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:10px}
 .info-hitung .btn{min-height:34px;padding:6px 12px;flex:none}
 .kontak li span.n .mig{display:block;font-size:12px;color:var(--kuning);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1659,6 +1682,149 @@ var KitImpor = (function () {
   };
 })();
 /* =====================================================================
+ *  KitBaris — sinkron per baris bersama LENSA Suite (Tahap 3C, dipakai MyTagihan Desa 4.1 + server 2.6).
+ *  ES5, jalan sama persis di Apps Script dan di browser (rumus sidik harus identik di kedua sisi).
+ *
+ *  Server menyimpan "buku besar" per lembar: sidik setiap baris (menurut posisi) + nomor urut perubahan.
+ *  Setiap kali ditanya, server menghitung ulang sidik semua baris; baris yang berbeda dari buku besar mendapat
+ *  nomor urut baru. Perangkat menyimpan nomor urut terakhirnya dan hanya menarik baris bernomor lebih besar.
+ *  Sidik lembar (jumlah baris + sidik semua baris) dipakai memeriksa bahwa isi perangkat = isi spreadsheet;
+ *  bila beda, lembar itu ditarik utuh (memperbaiki diri sendiri).
+ * ===================================================================== */
+var KitBaris = (function () {
+  var LEBAR = 11; // panjang sidik baris (base36, 53 bit)
+  /** Nilai sel seperti yang dikirim: tanggal → {$d: ms}; kosong → ''. */
+  function nilai(x) {
+    if (x === null || x === undefined) return '';
+    if (x instanceof Date || Object.prototype.toString.call(x) === '[object Date]') return { $d: x.getTime() };
+    return x;
+  }
+  function cyrb53(str) {
+    var h1 = 0xdeadbeef, h2 = 0x41c6ce57, i, ch;
+    for (i = 0; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507); h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  }
+  function b36(n) { var s = n.toString(36); while (s.length < LEBAR) s = '0' + s; return s; }
+  /** Sidik satu baris (array nilai, sudah dalam bentuk kiriman). */
+  function sidik(baris) { return b36(cyrb53(JSON.stringify((baris || []).map(nilai)))); }
+  /** Sidik semua baris → satu teks (LEBAR karakter per baris). */
+  function sidikSemua(isi) { var o = ''; for (var i = 0; i < isi.length; i++) o += sidik(isi[i]); return o; }
+  /** Sidik lembar dari teks sidikSemua. */
+  function sidikLembar(semua) { return (semua.length / LEBAR) + ':' + b36(cyrb53(semua)); }
+
+  /**
+   * Server: perbarui buku besar satu lembar dengan isi sekarang.
+   * buku = { h: teks sidikSemua, s: [nomor urut per baris] } atau null (lembar baru).
+   * Hasil { buku, berubah } — baris yang beda/baru mendapat nomor urut `urutBaru`.
+   */
+  function perbarui(buku, semua, urutBaru) {
+    var n = semua.length / LEBAR, lama = buku || { h: '', s: [] }, s = [], berubah = lama.h.length !== semua.length;
+    for (var i = 0; i < n; i++) {
+      var a = i * LEBAR, sama = lama.h.substr(a, LEBAR) === semua.substr(a, LEBAR) && lama.s[i] !== undefined;
+      s.push(sama ? lama.s[i] : urutBaru);
+      if (!sama) berubah = true;
+    }
+    return { buku: { h: semua, s: s }, berubah: berubah };
+  }
+  /** Server: baris yang nomor urutnya > k → [[posisi, baris], …]. */
+  function ambil(buku, isi, k) {
+    var out = [];
+    for (var i = 0; i < isi.length; i++) if ((buku.s[i] || 0) > k) out.push([i, isi[i]]);
+    return out;
+  }
+  /** Buku besar → teks (disimpan di lembar tersembunyi) dan sebaliknya. */
+  function keTeks(buku) { return JSON.stringify({ h: buku.h, s: buku.s.map(function (x) { return x.toString(36); }).join(',') }); }
+  function dariTeks(t) {
+    var o = JSON.parse(t);
+    return { h: String(o.h || ''), s: o.s ? String(o.s).split(',').map(function (x) { return parseInt(x, 36); }) : [] };
+  }
+  /** Perangkat: tambal isi lembar (array baris) dengan n baris dan potongan [[posisi, baris], …]. */
+  function tambal(isi, n, potongan) {
+    var b = isi.slice(0, n);
+    while (b.length < n) b.push([]);
+    for (var i = 0; i < potongan.length; i++) b[potongan[i][0]] = potongan[i][1];
+    return b;
+  }
+  return { LEBAR: LEBAR, nilai: nilai, sidik: sidik, sidikSemua: sidikSemua, sidikLembar: sidikLembar, perbarui: perbarui, ambil: ambil, keTeks: keTeks, dariTeks: dariTeks, tambal: tambal, cyrb53: cyrb53 };
+})();
+/* =====================================================================
+ *  KitGrup — aturan grup otomatis LENSA Suite (Tahap 5B, keputusan Hafidz 21 Nov 2026).
+ *  ES5, dipakai sama persis di server LENSA (STATUS_PK.grup, tab GRUP) dan di aplikasi (tab Grup).
+ *
+ *  Urutan: grup manual selalu menang (diurus di luar kit ini). Lalu:
+ *   - SPPG: hanya PENGURUS + RELAWAN dapur yang sama (nama tanpa awalan PENGURUS/RELAWAN), tidak pernah digabung dengan desa.
+ *   - Aparat / Pemerintah Desa + BPD: satu grup besar se-kabupaten.
+ *   - RT/RW: tidak digrupkan otomatis (bisa digrupkan sendiri lewat grup manual).
+ *   - LKD (Posyandu, PKK, Karang Taruna, kader, LPMD, Linmas, …) + Lembaga Adat Desa: satu grup per desa.
+ *   - Instansi: tidak digrupkan otomatis.
+ *   - Selain itu (usaha, pabrik rokok, lembaga pendidikan, BUMDes, Kop. Desa Merah Putih): grup per orang (PIC yang sama).
+ *  Hasil aturan(pk): { id, nama, jenis } = grup aturan · { tanpa: true, alasan } = tidak digrupkan · null = grup per orang.
+ * ===================================================================== */
+var KitGrup = (function () {
+  function huruf(s) { return ' ' + String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() + ' '; }
+  function norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function judul(s) { return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim().replace(/(^|\s)([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); }); }
+  var LEMBAGA_DESA = [
+    ['Aparat / Pemerintah Desa', / (APARAT|APARATUR|PERANGKAT|PEMDES|PEMERINTAH DESA|PEMERINTAHAN DESA|KEPALA DESA|KADES|SEKDES) /],
+    ['BPD', / (BPD|BADAN PERMUSYAWARATAN) /],
+    ['BUMDes', / (BUMDES|BUMDESA|BUM DES|BUM DESA|BADAN USAHA MILIK DESA) /],
+    ['Kop. Desa Merah Putih', / (KOPDES|KDMP|KKMP|MERAH PUTIH|KOPERASI DESA|KOPERASI KELURAHAN) /],
+    ['LKD · Posyandu', / POSYANDU /],
+    ['LKD · PKK', / (PKK|PEMBERDAYAAN KESEJAHTERAAN KELUARGA) /],
+    ['LKD · Karang Taruna', / (KARANG TARUNA|KARTAR) /],
+    ['LKD · RT/RW', / (RT RW|RTRW|RUKUN TETANGGA|RUKUN WARGA|KETUA RT|KETUA RW) /],
+    ['LKD · lainnya', / (LPMD|LPM|LINMAS|KPM|KADER|LEMBAGA KEMASYARAKATAN) /],
+    ['Lembaga Adat Desa', / (LEMBAGA ADAT|LAD) /]
+  ];
+  var URUT_LEMBAGA = ['BUMDes', 'Kop. Desa Merah Putih', 'BPD', 'LKD · Posyandu', 'LKD · PKK', 'LKD · Karang Taruna', 'LKD · RT/RW', 'LKD · lainnya', 'Lembaga Adat Desa', 'Aparat / Pemerintah Desa'];
+  /** Jenis lembaga desa menurut nama ('' = bukan lembaga desa). Sama dengan dasar "Ekosistem desa" di tab Grup. */
+  function lembagaDesa(nama, namaLapangan, segmen) {
+    var n = huruf(String(nama || '') + ' ' + String(namaLapangan || ''));
+    var usahaDesa = / (BUMDES|BUMDESA|BUM DES|BUM DESA|KOPDES|KDMP|KKMP|MERAH PUTIH|KOPERASI DESA) /.test(n);
+    if (/ (BANK|BPR|PT|CV|UD|PERSERODA|PERUMDA|PERUMDAM|PDAM) /.test(n) && !usahaDesa) return '';
+    for (var i = 0; i < URUT_LEMBAGA.length; i++) {
+      for (var j = 0; j < LEMBAGA_DESA.length; j++) {
+        var L = LEMBAGA_DESA[j];
+        if (L[0] !== URUT_LEMBAGA[i]) continue;
+        if (L[1].test(n) && (L[0] !== 'Aparat / Pemerintah Desa' || segmen === 'Desa' || / DESA /.test(n))) return L[0];
+      }
+    }
+    return segmen === 'Desa' ? 'Aparat / Pemerintah Desa' : '';
+  }
+  /** "KADER POSYANDU DESA LARANGAN LUAR KEC LARANGAN" → "LARANGAN LUAR". */
+  function desaDariNama(nama) {
+    var n = huruf(nama), m = n.match(/ (?:DESA|DS|KELURAHAN|KEL) ([A-Z0-9 ]+?)(?= (?:KEC|KECAMATAN|KAB|KABUPATEN|PAMEKASAN|SE) | $)/);
+    return m ? m[1].trim() : '';
+  }
+  function adalahSppg(nama, namaLapangan, segmen) { return segmen === 'SPPG' || / SPPG |PEMENUHAN GIZI/.test(huruf(String(nama || '') + ' ' + String(namaLapangan || ''))); }
+  /** "PENGURUS SPPG PAMEKASAN X 3P" → "SPPG PAMEKASAN X" (sama dengan Monitor SPPG). */
+  function intiSppg(nama) {
+    return String(nama || '').toUpperCase().replace(/\s+/g, ' ').trim().replace(/^(PENGURUS|RELAWAN)\s+/, '').replace(/\s+\dP$/, '').trim();
+  }
+  /** pk: { nama, namaResmi, namaLapangan, segmen, desa } */
+  function aturan(pk) {
+    var nm = pk.namaResmi || pk.nama || '', nl = pk.namaLapangan || '', seg = String(pk.segmen || '');
+    if (adalahSppg(nm, nl, seg)) {
+      var inti = intiSppg(nm) || intiSppg(pk.nama);
+      return { id: 'S:' + norm(inti), nama: judul(inti).replace(/^Sppg\b/, 'SPPG'), jenis: 'SPPG' };
+    }
+    var L = lembagaDesa(nm, nl, seg);
+    if (L === 'Aparat / Pemerintah Desa' || L === 'BPD') return { id: 'D:aparat-bpd', nama: 'Aparat Desa & BPD se-kabupaten', jenis: 'Desa' };
+    if (L === 'LKD · RT/RW') return { tanpa: true, alasan: 'RT/RW' };
+    if (/^LKD|^Lembaga Adat/.test(L)) {
+      var d = String(pk.desa || '').trim() || desaDariNama(nm + ' ' + nl);
+      return { id: 'L:' + (norm(d) || '-'), nama: 'Lembaga desa ' + (d ? judul(d) : '(desa belum diisi)'), jenis: 'Lembaga desa' };
+    }
+    if (seg === 'Instansi') return { tanpa: true, alasan: 'Instansi' };
+    return null;
+  }
+  return { aturan: aturan, lembagaDesa: lembagaDesa, desaDariNama: desaDariNama, intiSppg: intiSppg, adalahSppg: adalahSppg, norm: norm, judul: judul,
+    LEMBAGA_DESA: LEMBAGA_DESA, URUT_LEMBAGA: URUT_LEMBAGA };
+})();
+window.KitGrup = KitGrup;
+/* =====================================================================
  *  KitXls — pembaca file .xls untuk LENSA Suite (3C.1). ES5, tanpa pustaka luar, jalan di browser dan Node (uji).
  *  File dibaca di perangkat saja; yang dikirim ke spreadsheet/Gudang tetap hanya laporan ringkas (bukan filenya).
  *
@@ -2842,7 +3008,12 @@ var CSS_PESAN_WA = "*{box-sizing:border-box}\n.modul-wa{font:15px/1.45 system-ui
  * ==========================================================================
  */
 
-var VERSI = '1.30'; // 1.30 (LENSA Suite 4A): Pusat Kendali mengelola SIGAP Jakon (perangkat, Mitra & Pengamat, permintaan akses, galat, data KC)
+var VERSI = '1.33'; // 1.33 (LENSA Suite 5C.1): Kartu 360° per NPP (apiKartu360, dihitung di perangkat dari tab LENSA, NPP terkait digabung) +
+// tab RINGKAS_360 (ringkasan aplikasi lain, diisi Hub tiap pagi / apiPerbarui360; hanya ke perangkat Pemilik).
+// 1.32: 1.32 (LENSA Suite 5B): grup lebih fungsional — aturan grup otomatis kit/grup.js (SPPG per dapur, Aparat+BPD se-kabupaten, LKD+LAD per desa,
+// RT/RW & Instansi tanpa grup otomatis), apiAturGrup (bentuk cepat/gabung/ganti nama/pindah/bubarkan grup manual), apiGrupBubar (grup otomatis dibubarkan).
+// 1.31: 1.31 (LENSA Suite 5A): sinkron PER BARIS (aksi "baris", kit/baris.js) — hanya baris yang berubah dikirim ke perangkat; aksi "tab" lama tetap dilayani.
+// 1.30: 1.30 (LENSA Suite 4A): Pusat Kendali mengelola SIGAP Jakon (perangkat, Mitra & Pengamat, permintaan akses, galat, data KC)
 var TZ = 'Asia/Jakarta';
 var _HARI_INI_UJI = null; // khusus pengujian; biarkan null
 
@@ -5043,9 +5214,16 @@ function hitungStatus_(D) {
   D.itwKedaluwarsa = false;
   var semesta = {};
   D.itw.forEach(function (w) { semesta[String(w.npp)] = true; });
+  // 1.32: aturan grup otomatis per PK (kit/grup.js). Grup per orang hanya menghitung PK yang memang ikut grup per orang.
+  var BUBAR = grupBubarSet_(), aturanPk = {};
+  D.itw.forEach(function (w) {
+    var n0 = String(w.npp), m0 = D.per[n0] || {}, mon0 = D.mon[n0] || {}, dbu0 = D.dbu[n0] || {};
+    var seg0 = m0.segmen || tebakSegmen_(w.nama, dbu0.nama_ilo, String(mon0.skala || m0.skala || ''));
+    aturanPk[n0] = m0.grup_manual ? { manual: true } : KitGrup.aturan({ nama: w.nama, namaResmi: m0.nama_perusahaan || w.nama, namaLapangan: m0.nama_lapangan, segmen: seg0, desa: m0.desa });
+  });
   var pkPerPeng = {};
   Object.keys(D.rel).forEach(function (npp) {
-    if (!semesta[npp]) return;
+    if (!semesta[npp] || aturanPk[npp] !== null) return;
     D.rel[npp].forEach(function (r) {
       var id = String(r.id_pengurus);
       (pkPerPeng[id] = pkPerPeng[id] || {})[npp] = true;
@@ -5106,14 +5284,16 @@ function hitungStatus_(D) {
     if (!m.npp) flags.push('Belum di master');
 
     var grup = '', grupJenis = '', grupId = '';
+    var at = aturanPk[npp];
     if (m.grup_manual) { grup = String(m.grup_manual); grupJenis = 'Manual'; grupId = 'M:' + normCari_(grup); }
-    else {
-      var pg = rs.filter(function (r) { return r.pengendali === 'Ya' && jumlahPk(String(r.id_pengurus)) >= 2; });
+    else if (at && at.id) { if (!BUBAR['a:' + at.id]) { grup = at.nama; grupJenis = at.jenis; grupId = 'A:' + at.id; } }
+    else if (!at) {
+      var pg = rs.filter(function (r) { return r.pengendali === 'Ya' && jumlahPk(String(r.id_pengurus)) >= 2 && !BUBAR['o:' + r.id_pengurus]; });
       if (pg.length) {
         grupId = String(pg[0].id_pengurus);
         grup = (D.peng[grupId] || {}).nama || grupId;
         grupJenis = 'Pengendali';
-      } else if (ku && jumlahPk(String(ku.p.id_pengurus)) >= 2) {
+      } else if (ku && jumlahPk(String(ku.p.id_pengurus)) >= 2 && !BUBAR['o:' + ku.p.id_pengurus]) {
         grupId = String(ku.p.id_pengurus);
         grup = ku.p.nama || grupId;
         grupJenis = 'Kontak bersama';
@@ -5142,6 +5322,10 @@ function hitungStatus_(D) {
       _kepsAwal: keBlth_(m.keps_awal || mon.keps_awal || dbu.blth_keps), _nonAsn: nonAsn === 'Ya', _m: m, _mon: mon, _dbu: dbu, _rs: rs, _w: w
     });
   });
+  // 1.32: grup aturan yang anggotanya hanya 1 PK bukan grup
+  var nAturan = {};
+  out.forEach(function (r) { if (/^A:/.test(r._grupId)) nAturan[r._grupId] = (nAturan[r._grupId] || 0) + 1; });
+  out.forEach(function (r) { if (/^A:/.test(r._grupId) && nAturan[r._grupId] < 2) { r.grup = ''; r._grupId = ''; r._grupJenis = ''; } });
   var urut = { 'Telat 2 bulan+': 0, 'Telat 1 bulan': 1, 'Belum bulan ini': 2, 'Sudah ITB': 3 };
   out.sort(function (a, b) {
     return (urut[a.status_bayar] - urut[b.status_bayar]) || (b.koef - a.koef) || (b.perkiraan_tunggakan - a.perkiraan_tunggakan) ||
@@ -6248,6 +6432,7 @@ function tugasPagi() {
     hitungUlang_();
     if (P_('kalender_aktif') === 'Ya') salinKeKalender_();
     try { cadanganMingguan_(false); } catch (e) { catatGalat_('cadanganMingguan_', e.message, VERSI, 'server'); }
+    try { if (typeof hubRingkas360_ === 'function') hubRingkas360_(true); } catch (e) { catatGalat_('hubRingkas360_', e.message, VERSI, 'server'); } // 1.33: Kartu 360°
   } finally {
     lock.releaseLock();
   }
@@ -7199,7 +7384,7 @@ function apiMuat() {
     templat: { tanda: P_('penanda_daftar') || '📌' }, redaksi: barisRedaksi_(), batasHari: Pn_('batas_aman_posting'),
     analisa: modulAktif_('analisa'), pk: pk, jadwal: jadwal, hariIniData: hariIni, dihubungi: dihubungi_(logs), risiko: modulAktif_('analisa') ? bacaAppData_('risiko') : null,
     kecamatan: kec, desa: Object.keys(desa).reduce(function (o, k) { o[k] = Object.keys(desa[k]).sort(); return o; }, {}),
-    tinjau: tinjauApi_(), usulanBukan: String(P_('usulan_bukan') || '').split(',').filter(String),
+    tinjau: tinjauApi_(), usulanBukan: String(P_('usulan_bukan') || '').split(',').filter(String), grupBubar: daftarGrupBubar_(),
     bukuKontak: String(P_('buku_kontak') || '') // 1.24: ringkasan Buku Kontak (LENSA Suite 2B)
   });
 }
@@ -7248,6 +7433,173 @@ function apiUsulanBukan(kunci) {
     if (a.indexOf(kunci) < 0) a.push(kunci);
     setPengaturan_('usulan_bukan', a.slice(-1500).join(','), 'Usulan penggabungan (tab Grup) yang dijawab Bukan; diisi otomatis dari aplikasi.');
     return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+
+/* ---------- 1.33 (LENSA Suite 5C.1): Kartu 360° per NPP ---------- */
+/** Ringkasan aplikasi lain per NPP (tab RINGKAS_360: npp | app | isi JSON | diperbarui). */
+function ringkas360_() {
+  var o = {}, sh = ss_().getSheetByName('RINGKAS_360');
+  if (!sh || sh.getLastRow() < 2) return o;
+  sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues().forEach(function (r) {
+    var n = String(r[0] || ''), app = String(r[1] || '');
+    if (!n || !app) return;
+    try { (o[n] = o[n] || {})[app] = { isi: JSON.parse(String(r[2] || '{}')), diperbarui: r[3] instanceof Date ? fmt_(r[3], 'yyyy-MM-dd HH:mm') : String(r[3] || '') }; } catch (e) { /* baris rusak dilewati */ }
+  });
+  return o;
+}
+/** Perbarui ringkasan aplikasi lain sekarang (butuh internet; dijalankan di server). */
+function apiPerbarui360() {
+  if (typeof hubRingkas360_ !== 'function') throw new Error('Hub LENSA Suite belum dipasang di proyek LENSA PK (berkas Hub.gs).');
+  return hubRingkas360_();
+}
+function ym360_(v) {
+  if (v instanceof Date) return fmt_(v, 'yyyy-MM');
+  var t = String(v === null || v === undefined ? '' : v).trim(), m = t.match(/^(\d{4})-(\d{2})/) || t.match(/^(\d{2})-(\d{4})$/);
+  if (!m) { var d = keTanggal_(t); return d ? d.slice(0, 7) : ''; }
+  return m[1].length === 4 ? m[1] + '-' + m[2] : m[2] + '-' + m[1];
+}
+function tambahBulan360_(ym, n) { var y = +ym.slice(0, 4), m = +ym.slice(5, 7) - 1 + n; y += Math.floor(m / 12); m = ((m % 12) + 12) % 12; return y + '-' + ('0' + (m + 1)).slice(-2); }
+function selisihBulan360_(a, b) { return (+a.slice(0, 4) - +b.slice(0, 4)) * 12 + (+a.slice(5, 7) - +b.slice(5, 7)); }
+/**
+ * Kartu 360°: semua tentang satu PK (dan NPP terkaitnya) dari tab LENSA + ringkasan aplikasi lain. Hanya membaca, jalan di perangkat (tanpa sinyal).
+ * NPP terkait: pasangan pengurus/relawan SPPG, nama resmi sama, digabung di Monitor SPPG.
+ */
+function apiKartu360(npp) {
+  npp = String(npp || '').trim();
+  var SP = {}, PER = {}, R = ringkas360_();
+  bacaTab_('STATUS_PK').data.forEach(function (r) { SP[String(r.npp)] = r; });
+  if (!SP[npp]) throw new Error('NPP ' + npp + ' tidak ada di data LENSA.');
+  bacaTab_('PERUSAHAAN').data.forEach(function (r) { PER[String(r.npp)] = r; });
+  var namaR = function (n) { return normCari_((PER[n] && PER[n].nama_perusahaan) || (SP[n] && SP[n].nama) || ''); };
+  var terkait = [{ npp: npp, nama: String(SP[npp].nama), alasan: '' }];
+  var tambah = function (n, alasan) { n = String(n); if (SP[n] && !terkait.some(function (t) { return t.npp === n; })) terkait.push({ npp: n, nama: String(SP[n].nama), alasan: alasan }); };
+  var x = SP[npp], inti = KitGrup.adalahSppg(x.nama, '', x.segmen) ? KitGrup.intiSppg(x.nama) : '';
+  Object.keys(SP).forEach(function (n) {
+    if (n === npp) return;
+    if (inti && KitGrup.adalahSppg(SP[n].nama, '', SP[n].segmen) && KitGrup.intiSppg(SP[n].nama) === inti) tambah(n, 'pasangan pengurus/relawan SPPG');
+    else if (namaR(npp).length > 5 && namaR(n) === namaR(npp)) tambah(n, 'nama resmi sama');
+  });
+  var mon = (R[npp] || {})['Monitor SPPG'];
+  if (mon && mon.isi && mon.isi.npp) mon.isi.npp.forEach(function (n) { tambah(n, 'digabung di Monitor SPPG'); });
+  var npps = terkait.map(function (t) { return t.npp; }), ada = {};
+  npps.forEach(function (n) { ada[n] = true; });
+  // iuran 12 bulan
+  var bulanIni = hariIniStr_().slice(0, 7), bulan = [];
+  for (var i = 11; i >= 0; i--) bulan.push(tambahBulan360_(bulanIni, -i));
+  var bayar = {};
+  bacaTab_('RIWAYAT_BAYAR').data.forEach(function (r) {
+    var n = String(r.npp), b = ym360_(r.blth_posting);
+    if (!ada[n] || !b) return;
+    (bayar[n] = bayar[n] || {})[b] = { tgl: keTanggal_(r.tgl_terima) || '', nilai: Number(r.nilai_posting) || 0 };
+  });
+  bacaTab_('KARTU_IURAN').data.forEach(function (r) {
+    var n = String(r.npp), b = ym360_(r.blth_iuran);
+    if (!ada[n] || !b) return;
+    var lama = (bayar[n] = bayar[n] || {})[b] || {};
+    bayar[n][b] = { tgl: keTanggal_(r.tgl_bayar) || lama.tgl || '', nilai: Number(r.total_iuran) || lama.nilai || 0, denda: Number(r.denda) || 0 };
+  });
+  var iuran = npps.map(function (n) {
+    var s = SP[n], keps = ym360_((PER[n] || {}).keps_awal), post = ym360_(s.blth_posting), hit = { tepat: 0, telat: 0, tunggak: 0 };
+    Object.keys(bayar[n] || {}).forEach(function (b) { if (b > post) post = b; }); // posting berurutan: bulan terakhir yang tercatat dibayar = batas terbayar
+    var sel = bulan.map(function (m) {
+      var k = (bayar[n] || {})[m];
+      if (keps && m < keps) return { b: m, s: 'belum-peserta' };
+      if (k && k.tgl) {
+        var lambat = Math.max(0, selisihBulan360_(k.tgl.slice(0, 7), m));
+        hit[lambat ? 'telat' : 'tepat']++;
+        return { b: m, s: lambat ? 'telat' : 'tepat', tgl: k.tgl, nilai: k.nilai, denda: k.denda || 0, lambat: lambat };
+      }
+      if (post && m <= post) return { b: m, s: 'lunas', nilai: k ? k.nilai : 0 };
+      if (m === bulanIni) return { b: m, s: 'berjalan' };
+      hit.tunggak++;
+      return { b: m, s: 'tunggak' };
+    });
+    return { npp: n, sel: sel, hit: hit, status: String(s.status_bayar || ''), tunggakan: Number(s.perkiraan_tunggakan) || 0, iuran: Number(s.iuran_terakhir) || 0, posting: post };
+  });
+  // tenaga kerja per bulan (snapshot MONITORING terakhir tiap bulan)
+  var tkPer = {};
+  bacaTab_('MONITORING').data.forEach(function (r) {
+    var n = String(r.npp), b = ym360_(r.periode_laporan) || ym360_(r.periode), per = keTanggal_(r.periode) || '';
+    if (!ada[n] || !b) return;
+    var lama = ((tkPer[n] = tkPer[n] || {})[b]);
+    if (lama && lama.per > per) return;
+    tkPer[n][b] = { per: per, tk: Number(r.tk_aktif) || 0, tambah: Number(r.tk_tambah) || 0, kurang: Number(r.tk_kurang) || 0, prog: String(r.prog || '') };
+  });
+  var tk = npps.map(function (n) {
+    return { npp: n, seri: bulan.map(function (m) { var v = (tkPer[n] || {})[m]; return v ? { b: m, tk: v.tk, tambah: v.tambah, kurang: v.kurang } : { b: m }; }),
+      sekarang: Number(SP[n].tk_aktif) || 0, program: ((tkPer[n] || {})[bulan[11]] || {}).prog || String((PER[n] || {}).program || '') };
+  });
+  var rapor = bacaTab_('RAPOR').data.filter(function (r) { return ada[String(r.npp)]; }).map(function (r) {
+    return { npp: String(r.npp), skor: r.skor, warna: String(r.warna || ''), alasan: String(r.alasan || ''), peluang: String(r.peluang || ''), flags: String(r.flags || ''),
+      upah: Number(r.upah_per_tk) || 0, program: String(r.program || ''), keluar: r.tk_keluar_persen };
+  });
+  var migrasi = bacaTab_('MIGRASI_DETIL').data.filter(function (r) { return ada[String(r.npp)]; }).map(function (r) {
+    return { bulan: ym360_(r.bulan), npp: String(r.npp), dari: String(r.kelas_lalu || ''), ke: String(r.kelas_ini || ''), migrasi: String(r.migrasi || '') };
+  }).sort(function (a, b) { return a.bulan < b.bulan ? 1 : -1; }).slice(0, 12);
+  // riwayat hubungi (semua aplikasi) + agenda
+  var riwayat = bacaTab_('LOG_INTERAKSI').data.filter(function (r) { return ada[String(r.npp)]; }).map(function (r) {
+    var t = String(r.ringkasan || '').replace(/\s*\[ref:[^\]]*\]/g, ''), m = t.match(/^\[([^\]]+)\]\s*/);
+    return { tanggal: keTanggal_(r.tanggal) || '', npp: String(r.npp), jenis: String(r.jenis || ''), sumber: m ? m[1] : 'LENSA PK', ringkasan: m ? t.slice(m[0].length) : t,
+      status: String(r.status || ''), komitmen: String(r.komitmen || ''), tl: keTanggal_(r.tgl_tindak_lanjut) || '' };
+  });
+  bacaTab_('JADWAL').data.forEach(function (r) {
+    var ns = String(r.npp_list || '').split(/[,;\s]+/).filter(function (n) { return ada[n]; });
+    if (!ns.length) return;
+    riwayat.push({ tanggal: keTanggal_(r.tanggal) || '', npp: ns.join(','), jenis: 'Agenda · ' + String(r.jenis || 'kunjungan'), sumber: 'LENSA PK', ringkasan: String(r.judul || ''),
+      status: String(r.status || ''), komitmen: String(r.hasil || ''), tl: '', jam: String(r.jam_mulai || ''), agenda: true });
+  });
+  riwayat.sort(function (a, b) { return a.tanggal < b.tanggal ? 1 : a.tanggal > b.tanggal ? -1 : 0; });
+  var lain = {};
+  npps.forEach(function (n) {
+    Object.keys(R[n] || {}).forEach(function (app) {
+      var v = R[n][app], l = lain[app];
+      if (!l) { lain[app] = v; return; }
+      // SIGAP: daftar CV dari NPP terkait digabung (tanpa ganda)
+      if (l.isi && v.isi && Array.isArray(l.isi.cv) && Array.isArray(v.isi.cv)) {
+        var sudah = {}; l.isi.cv.forEach(function (c) { sudah[c.nama] = true; });
+        v.isi.cv.forEach(function (c) { if (!sudah[c.nama]) { sudah[c.nama] = true; l.isi.cv.push(c); } });
+      }
+    });
+  });
+  return { npp: npp, nama: String(x.nama), dibuat: hariIniStr_(), terkait: terkait, bulan: bulan, iuran: iuran, tk: tk, rapor: rapor, migrasi: migrasi,
+    riwayat: riwayat.slice(0, 80), jumlahRiwayat: riwayat.length, lain: lain };
+}
+
+/* ---------- 1.32 (LENSA Suite 5B): grup manual & grup otomatis yang dibubarkan ---------- */
+function daftarGrupBubar_() { try { var a = JSON.parse(P_('grup_bubar') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function grupBubarSet_() { var o = {}; daftarGrupBubar_().forEach(function (x) { if (x && x.id) o[String(x.id)] = true; }); return o; }
+/** Grup otomatis dibubarkan (tidak muncul lagi, juga bila orang itu kelak memegang PK tambahan) atau dikembalikan (bubar = false). */
+function apiGrupBubar(item, bubar) {
+  item = item || {};
+  var id = teksApi_(item.id).slice(0, 120), nama = teksApi_(item.nama).slice(0, 100);
+  if (!/^(o|a):./.test(id)) throw new Error('Grup otomatis tidak dikenal.');
+  var lock = kunciApi_();
+  try {
+    muatPengaturan_();
+    var a = daftarGrupBubar_().filter(function (x) { return x && x.id !== id; });
+    if (bubar !== false) a.push({ id: id, nama: nama, t: sekarangStr_() });
+    setPengaturan_('grup_bubar', JSON.stringify(a.slice(-300)), 'Grup otomatis yang dibubarkan di tab Grup (tidak muncul lagi); diisi otomatis dari aplikasi.');
+    return { ok: true, jumlah: a.length };
+  } finally { lock.releaseLock(); }
+}
+/** Isi kolom grup_manual banyak PK sekaligus: [{npp, grup}] (grup '' = keluar dari grup manual). Dipakai bentuk grup cepat, gabung, ganti nama, pindah, bubarkan. */
+function apiAturGrup(daftar) {
+  var peta = {};
+  (daftar || []).slice(0, 3000).forEach(function (x) { if (x && x.npp) peta[String(x.npp)] = teksApi_(x.grup).replace(/\s+/g, ' ').slice(0, 80); });
+  var lock = kunciApi_();
+  try {
+    var t = bacaTab_('PERUSAHAAN'), ubah = [], ada = {};
+    t.data.forEach(function (o) {
+      var k = String(o.npp);
+      if (!(k in peta)) return;
+      ada[k] = true;
+      if (String(o.grup_manual || '') === peta[k]) return;
+      o.grup_manual = peta[k]; o.diperbarui = sekarangStr_(); ubah.push(o);
+    });
+    if (ubah.length > 20) tulisTab_('PERUSAHAAN', t.data);
+    else ubah.forEach(function (o) { ubahSel_('PERUSAHAAN', o, ['grup_manual', 'diperbarui']); });
+    return { ok: true, diubah: ubah.length, tidakAda: Object.keys(peta).filter(function (k) { return !ada[k]; }) };
   } finally { lock.releaseLock(); }
 }
 
@@ -8621,11 +8973,11 @@ function versiLebihKecil_(a, b) {
  */
 var APP_FN_TULIS = ['apiSimpanPk', 'apiGeotag', 'apiKelompok', 'apiGantiKelompok', 'apiSimpanKontak', 'apiLepasKontak', 'apiSimpanPengurus',
   'apiPkKontak', 'apiSatukanOrang', 'apiCatat', 'apiSimpanTemplat', 'apiHapusTemplat', 'apiCentang', 'apiCentangPk', 'apiSimpanJadwal', 'apiHitung', 'apiImporApp',
-  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi', 'apiImporLaporan'];
+  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi', 'apiImporLaporan', 'apiAturGrup', 'apiGrupBubar'];
 var APP_FN_HANYA_PEMILIK = { apiSimpanRedaksi: 'Pustaka Redaksi WA hanya bisa diubah dari perangkat Pemilik.' };
-var APP_FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg']; // butuh internet / spreadsheet lain: tidak bisa di perangkat
+var APP_FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg', 'apiPerbarui360']; // butuh internet / spreadsheet lain: tidak bisa di perangkat
 var APP_FN_AKSES = ['apiAksesMuat', 'apiAksesPerintah', 'apiAksesServer', 'apiAksesHub', 'apiAksesOrang']; // pengelola perangkat & pengguna (hanya perangkat Pemilik)
-var APP_TAB_LEWATI = { GALAT: true, SINKRON_SPPG: true, PERANGKAT: true, UNDANGAN: true, LOG_AKSES: true }; // tab akses hanya di spreadsheet
+var APP_TAB_LEWATI = { GALAT: true, SINKRON_SPPG: true, PERANGKAT: true, UNDANGAN: true, LOG_AKSES: true, _sinkron_baris: true }; // tab akses & buku besar sinkron hanya di spreadsheet
 
 function pemilikMembuka_() {
   try {
@@ -8715,7 +9067,8 @@ function doPost(e) {
       var akses = ctx.lama ? null : aksesInfo_(ctx.p);
       if (req.aksi === 'cek') hasil = { ok: true, versi: VERSI, kode: P_('kode_pembina'), akses: akses };
       else if (req.aksi === 'jalankan') hasil = jalankanApp_(req.op || [], ctx);
-      else if (req.aksi === 'tab') { terimaGalatApp_(req.galat, ctx, req.versiApp); hasil = tabApp_(req.hash || {}); hasil.akses = akses; }
+      else if (req.aksi === 'tab') { terimaGalatApp_(req.galat, ctx, req.versiApp); hasil = tabApp_(req.hash || {}, akses); hasil.akses = akses; }
+      else if (req.aksi === 'baris') { terimaGalatApp_(req.galat, ctx, req.versiApp); hasil = barisApp_(req, akses); hasil.akses = akses; }
       else if (req.aksi === 'panggil') hasil = panggilApp_(req.fn, req.args || [], ctx);
       else if (req.aksi === 'keluar') hasil = aksesKeluar_(ctx);
       else throw new Error('Aksi tidak dikenal.');
@@ -8747,7 +9100,7 @@ function jalankanApp_(ops, ctx) {
   var peta = { apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak,
     apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat,
     apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiSimpanJadwal: apiSimpanJadwal,
-    apiHitung: apiHitung, apiImporApp: apiImporApp, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiSimpanRedaksi: apiSimpanRedaksi,
+    apiHitung: apiHitung, apiImporApp: apiImporApp, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiSimpanRedaksi: apiSimpanRedaksi, apiAturGrup: apiAturGrup, apiGrupBubar: apiGrupBubar,
     apiImporLaporan: apiImporLaporan };
   var out = aksesJalankan_(ctx || { idp: '' }, ops, function (op) {
     if (APP_FN_HANYA_PEMILIK[op.fn] && ctx && !ctx.lama && ctx.peran !== 'Pemilik') throw new Error(APP_FN_HANYA_PEMILIK[op.fn]);
@@ -8759,18 +9112,83 @@ function jalankanApp_(ops, ctx) {
   return { ok: true, hasil: out };
 }
 
-function tabApp_(hashKlien) {
+/** Tab yang dibawa ke perangkat. 1.26: daftar akses aplikasi lain (Hub) tidak pernah ke perangkat. */
+function tabSinkron_(n) { return !(APP_TAB_LEWATI[n] || /^(PERANGKAT|UNDANGAN|LOG_AKSES)_/.test(n) || n === 'PINDAH'); }
+/** 1.33: RINGKAS_360 (data aplikasi lain untuk Kartu 360°) hanya ke perangkat Pemilik (perangkat lama ber-KUNCI = milik Pemilik). */
+function bolehTab_(n, akses) { return n !== 'RINGKAS_360' || !akses || akses.peran === 'Pemilik'; }
+function infoSppgApp_() {
+  try { if (sppgAktif_()) return { terakhir: sppgProp_().getProperty('SPPG_TERAKHIR') || '', galat: sppgProp_().getProperty('SPPG_GALAT') || '' }; } catch (e) { /* diam */ }
+  return null;
+}
+
+function tabApp_(hashKlien, akses) {
   var ss = ss_(), tab = {}, hash = {}, ukuran = 0;
   ss.getSheets().forEach(function (sh) {
     var n = sh.getName();
-    if (APP_TAB_LEWATI[n] || /^(PERANGKAT|UNDANGAN|LOG_AKSES)_/.test(n) || n === 'PINDAH') return; // 1.26: daftar akses aplikasi lain (Hub) tidak pernah ke perangkat
+    if (!tabSinkron_(n) || !bolehTab_(n, akses)) return;
     var v = nilaiTab_(sh), h = sidikTab_(v);
     hash[n] = h;
     if (hashKlien[n] !== h) { tab[n] = v; ukuran += JSON.stringify(v).length; }
   });
-  var sppg = null;
-  try { if (sppgAktif_()) sppg = { terakhir: sppgProp_().getProperty('SPPG_TERAKHIR') || '', galat: sppgProp_().getProperty('SPPG_GALAT') || '' }; } catch (e) { /* diam */ }
-  return { ok: true, hash: hash, tab: tab, sppg: sppg, url: ss.getUrl(), versi: VERSI };
+  return { ok: true, hash: hash, tab: tab, sppg: infoSppgApp_(), url: ss.getUrl(), versi: VERSI };
+}
+
+/* ---------- 1.31 (LENSA Suite 5A): sinkron per baris — sama dengan MyTagihan 2.6 (kit/baris.js) ---------- */
+var BUKU_BARIS = '_sinkron_baris', BUKU_SEL = 32000;
+function bukuBaca_() {
+  var sh = ss_().getSheetByName(BUKU_BARIS), buku = { zaman: '', urut: 0, tab: {} };
+  if (!sh || sh.getLastRow() < 1) return buku;
+  sh.getRange(1, 1, sh.getLastRow(), Math.max(3, sh.getLastColumn())).getValues().forEach(function (r) {
+    if (r[0] === '#') { buku.zaman = String(r[1] || ''); buku.urut = +r[2] || 0; return; }
+    if (!r[0]) return;
+    try { buku.tab[String(r[0])] = KitBaris.dariTeks(r.slice(1).map(function (x) { return String(x || '').replace(/^~/, ''); }).join('')); } catch (e) { /* rusak: lembar itu dianggap baru */ }
+  });
+  return buku;
+}
+function bukuTulis_(buku) {
+  var ss = ss_(), sh = ss.getSheetByName(BUKU_BARIS);
+  if (!sh) { sh = ss.insertSheet(BUKU_BARIS); sh.hideSheet(); }
+  var rows = [['#', buku.zaman, buku.urut]];
+  Object.keys(buku.tab).forEach(function (n) {
+    var t = KitBaris.keTeks(buku.tab[n]), r = [n];
+    for (var i = 0; i < t.length; i += BUKU_SEL) r.push('~' + t.slice(i, i + BUKU_SEL));
+    rows.push(r);
+  });
+  var lebar = Math.max.apply(null, rows.map(function (r) { return r.length; }));
+  rows.forEach(function (r) { while (r.length < lebar) r.push(''); });
+  sh.clearContents();
+  sh.getRange(1, 1, rows.length, lebar).setNumberFormat('@').setValues(rows);
+}
+/**
+ * Perangkat 2.10: { zaman, seq, sidik: {tab: sidik}, penuh: [tab] } → { zaman, seq, tab: {tab: {n, sidik, utuh, b}}, ada, sppg, url, versi }.
+ * Tab yang sidiknya sama dengan perangkat tidak dikirim. utuh = true → b = seluruh isi; selain itu b = [[posisi, baris], …] (hanya baris berubah).
+ * Bila isi perangkat ternyata beda (sidik tab tidak cocok), perangkat meminta tab itu utuh lewat "penuh" (memperbaiki diri sendiri).
+ */
+function barisApp_(req, akses) {
+  var lock = kunciApi_();
+  try {
+    var ss = ss_(), buku = bukuBaca_(), baru = buku.urut + 1, tab = {}, ada = [], ubah = false;
+    if (!buku.zaman) { buku.zaman = Utilities.getUuid().replace(/-/g, '').slice(0, 12); ubah = true; }
+    var k = req.zaman === buku.zaman ? (+req.seq || 0) : 0;
+    if (k > buku.urut) k = 0;
+    var sidikKlien = req.sidik || {}, penuh = Array.isArray(req.penuh) ? req.penuh : [], semuaTab = [];
+    ss.getSheets().forEach(function (sh) {
+      var n = sh.getName();
+      if (!tabSinkron_(n)) return;
+      semuaTab.push(n);
+      var isi = nilaiTab_(sh), semua = KitBaris.sidikSemua(isi), p = KitBaris.perbarui(buku.tab[n], semua, baru);
+      if (p.berubah) { buku.tab[n] = p.buku; ubah = true; }
+      if (!bolehTab_(n, akses)) return; // buku besar tetap dihitung untuk semua perangkat
+      ada.push(n);
+      var sid = KitBaris.sidikLembar(semua);
+      if (sidikKlien[n] === sid && penuh.indexOf(n) < 0) return;
+      var utuh = !k || penuh.indexOf(n) >= 0 || !sidikKlien[n];
+      tab[n] = { n: isi.length, sidik: sid, utuh: utuh, b: utuh ? isi : KitBaris.ambil(p.buku, isi, k) };
+    });
+    Object.keys(buku.tab).forEach(function (n) { if (semuaTab.indexOf(n) < 0) { delete buku.tab[n]; ubah = true; } }); // tab yang dihapus di spreadsheet
+    if (ubah) { buku.urut = baru; bukuTulis_(buku); }
+    return { ok: true, zaman: buku.zaman, seq: buku.urut, tab: tab, ada: ada, sppg: infoSppgApp_(), url: ss.getUrl(), versi: VERSI };
+  } finally { lock.releaseLock(); }
 }
 
 function panggilApp_(fn, args, ctx) {
@@ -8780,12 +9198,16 @@ function panggilApp_(fn, args, ctx) {
     _AKSES_OLEH = { idp: ctx.idp, pengguna: ctx.pengguna, perangkat: ctx.perangkat };
     return { ok: true, nilai: { apiAksesMuat: apiAksesMuat, apiAksesPerintah: apiAksesPerintah, apiAksesServer: apiAksesServer, apiAksesHub: apiAksesHub, apiAksesOrang: apiAksesOrang }[fn].apply(null, args || []) };
   }
+  if (fn === 'apiPerbarui360') {
+    if (ctx && !ctx.lama && ctx.peran !== 'Pemilik') throw new Error('Kartu 360° hanya untuk perangkat pemilik.');
+    return { ok: true, nilai: apiPerbarui360() };
+  }
   var nilai = fn === 'apiUraiPeta' ? apiUraiPeta.apply(null, args) : apiJembatanSppg();
   return { ok: true, nilai: nilai };
 }
 
 /* === 06-fungsi === */
-var FUNGSI_LENSA = {apiMuat: apiMuat, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiRiwayat: apiRiwayat, apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak, apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat, apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiSimpanRedaksi: apiSimpanRedaksi, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiGalat: apiGalat, apiSimpanJadwal: apiSimpanJadwal, apiUraiPeta: apiUraiPeta, apiHitung: apiHitung, apiJembatanSppg: apiJembatanSppg, apiImporApp: apiImporApp, apiImporLaporan: apiImporLaporan};
+var FUNGSI_LENSA = {apiMuat: apiMuat, apiPutuskanTinjau: apiPutuskanTinjau, apiUsulanBukan: apiUsulanBukan, apiPerbarui360: apiPerbarui360, apiKartu360: apiKartu360, apiGrupBubar: apiGrupBubar, apiAturGrup: apiAturGrup, apiRiwayat: apiRiwayat, apiSimpanPk: apiSimpanPk, apiGeotag: apiGeotag, apiKelompok: apiKelompok, apiGantiKelompok: apiGantiKelompok, apiSimpanKontak: apiSimpanKontak, apiLepasKontak: apiLepasKontak, apiSimpanPengurus: apiSimpanPengurus, apiPkKontak: apiPkKontak, apiSatukanOrang: apiSatukanOrang, apiCatat: apiCatat, apiSimpanTemplat: apiSimpanTemplat, apiHapusTemplat: apiHapusTemplat, apiSimpanRedaksi: apiSimpanRedaksi, apiCentang: apiCentang, apiCentangPk: apiCentangPk, apiGalat: apiGalat, apiSimpanJadwal: apiSimpanJadwal, apiUraiPeta: apiUraiPeta, apiHitung: apiHitung, apiJembatanSppg: apiJembatanSppg, apiImporApp: apiImporApp, apiImporLaporan: apiImporLaporan};
 var CSS_LAYAR2 = ":host{\n  --biru:#0E5A5F;--biru2:#157A80;--biruTua:#0A4347;--biruL:#E1F0F0;--emas:#C9972B;--teks:#16202E;--pudar:#566070;--garis:#E3E6EC;--garis2:#C9CED8;--latar:#F3F4F7;--putih:#fff;\n  --tepat:#1F7A56;--tepatL:#E3F2E9;--lalu:#3F63B8;--laluL:#E8ECF7;--m2:#E0A81E;--m3:#D97A1E;--m4:#C4551C;--m5:#A33319;--m6:#7E1A1A;--merahL:#F9E1DF;--kuningL:#FBEFD5;\n  --wa:#17794A;--r:14px;--bayang:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);\n  --huruf:\"Segoe UI\",system-ui,-apple-system,Roboto,\"Helvetica Neue\",Arial,sans-serif;\n}\n*{box-sizing:border-box}\n:host{margin:0;padding:0;background:var(--latar);color:var(--teks);font:15px/1.45 var(--huruf);-webkit-text-size-adjust:100%}\nbutton,input,select,textarea{font:inherit;color:inherit}\ninput,select,textarea{font-size:15px}\na{color:var(--biru)}\nh1,h2,h3{margin:0;line-height:1.2}\n.angka{font-variant-numeric:tabular-nums}\n[hidden]{display:none!important}\n\n/* ---------- kerangka ---------- */\n.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh;background:linear-gradient(90deg,var(--biru) 232px,var(--latar) 232px)}\n.sisi{background:var(--biru);color:#fff;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:20px 12px 14px;gap:18px;overflow-y:auto}\n.merek{padding:0 8px}\n.merek-judul{font-size:21px;font-weight:700;letter-spacing:-.2px}\n.merek-sub{font-size:12px;color:#C9D3EE;margin-top:2px}\n.nav{display:flex;flex-direction:column;gap:2px}\n.nav button{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:10px;background:none;color:#DCE3F5;font-weight:500;text-align:left;cursor:pointer}\n.nav button:hover{background:rgba(255,255,255,.08);color:#fff}\n.nav button[aria-current=\"page\"]{background:#fff;color:var(--biru);font-weight:700}\n.nav svg{width:20px;height:20px;flex:none}\n.nav .lencana{margin-left:auto;background:#FBEFD5;color:#5C3D00;border-radius:999px;font-size:12px;font-weight:700;padding:1px 8px}\n.sisi-bawah{margin-top:auto;font-size:12px;color:#C9D3EE;padding:0 8px;display:flex;flex-direction:column;gap:6px}\n.titik{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7FE0B0;margin-right:6px;vertical-align:middle}\n.titik.kuning{background:#F5C451}\n.isi{min-width:0;padding:26px 32px 48px;outline:none}\n.isi-dalam{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:18px}\n\n.kepala{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}\n.kepala h1{font-size:26px;font-weight:700;letter-spacing:-.3px}\n.kepala .sub{color:var(--pudar);margin-top:4px}\n.kepala-aksi{display:flex;gap:8px;flex-wrap:wrap}\n\n/* ---------- komponen ---------- */\n.kartu{background:#fff;border-radius:var(--r);box-shadow:var(--bayang);padding:18px 20px}\n.kartu h2{font-size:17px;font-weight:700}\n.kartu-kepala{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}\n.kartu-kepala .ket{color:var(--pudar);font-size:13px}\n.label-kecil{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--pudar);text-transform:uppercase}\n.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr));gap:18px}\n.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:14px}\n.ubin{background:#fff;border-radius:var(--r);box-shadow:var(--bayang);padding:16px 18px;display:flex;flex-direction:column;gap:4px}\n.ubin .besar{font-size:32px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums}\n.ubin .besar small{font-size:16px;color:var(--pudar);font-weight:600}\n.ubin .ket{font-size:13px;color:var(--pudar)}\n\n.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--garis2);background:#fff;color:var(--teks);font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}\n.btn:hover{border-color:#9AA3B2;background:#FAFBFC}\n.btn:disabled{opacity:.5;cursor:not-allowed}\n.btn.utama{background:var(--biru);border-color:var(--biru);color:#fff}\n.btn.utama:hover{background:var(--biruTua)}\n.btn.wa{background:var(--wa);border-color:var(--wa);color:#fff}\n.btn.wa:hover{background:#11633C}\n.btn.bahaya{color:#9E2A22;border-color:#E3B4AF}\n.btn.kecil{min-height:34px;padding:0 10px;font-size:13px;border-radius:8px}\n.btn.polos{border-color:transparent;background:none;color:var(--biru)}\n.btn.polos:hover{background:var(--biruL)}\n.btn svg{width:18px;height:18px;flex:none}\n\n.chip-baris{display:flex;flex-wrap:wrap;gap:8px}\n.chip{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--garis2);background:#fff;font-size:13px;font-weight:500;cursor:pointer}\n.chip[aria-pressed=\"true\"]{background:var(--teks);border-color:var(--teks);color:#fff}\n.kotak{width:10px;height:10px;border-radius:3px;flex:none;display:inline-block}\n.seg{display:inline-grid;grid-auto-flow:column;gap:4px;background:#E3E6EC;border-radius:12px;padding:4px}\n.seg button{min-height:36px;padding:0 14px;border:0;border-radius:9px;background:none;font-weight:600;color:var(--pudar);cursor:pointer}\n.seg button[aria-pressed=\"true\"]{background:#fff;color:var(--teks);box-shadow:0 1px 2px rgba(16,24,40,.12)}\n\n.lencana-st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;border-radius:6px;padding:3px 8px;white-space:nowrap}\n.st-tepat{background:var(--tepatL);color:#155C40}\n.st-lalu{background:var(--laluL);color:#2B4A93}\n.st-m2{background:#FBF0D2;color:#6B4A00}\n.st-m3{background:#FBE5CC;color:#7A3F00}\n.st-m4{background:#F9DCCB;color:#8A3410}\n.st-m5,.st-m6,.st-mx{background:var(--m6);color:#fff}\n.st-abu{background:#EEF0F4;color:var(--pudar)}\n\n.field{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600;color:var(--pudar)}\n.inp{min-height:40px;border:1px solid var(--garis2);border-radius:10px;padding:0 12px;background:#fff;width:100%;color:var(--teks);font-weight:400}\ntextarea.inp{padding:10px 12px;min-height:120px;resize:vertical;line-height:1.45}\n.inp:focus,.btn:focus-visible,.chip:focus-visible,.nav button:focus-visible{outline:3px solid #9AAAD3;outline-offset:1px}\nselect.inp{padding-right:28px}\n.baris-saring{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}\n.baris-saring .field{min-width:170px}\n.cari{position:relative;flex:1 1 260px}\n.cari input{padding-left:38px}\n.cari svg{position:absolute;left:12px;top:11px;width:18px;height:18px;color:var(--pudar)}\n\n/* ---------- tabel ---------- */\n.tabel-bungkus{overflow:auto;border-radius:var(--r);background:#fff;box-shadow:var(--bayang)}\ntable.tabel{width:100%;border-collapse:collapse;font-size:14px}\n.tabel th{position:sticky;top:0;background:#F7F8FA;text-align:left;font-size:12px;font-weight:700;color:var(--pudar);padding:10px 12px;border-bottom:1px solid var(--garis);white-space:nowrap;z-index:1}\n.tabel td{padding:10px 12px;border-bottom:1px solid var(--garis);vertical-align:middle}\n.tabel tr.klik{cursor:pointer}\n.tabel tr.klik:hover td{background:#FAFBFD}\n.tabel .kanan{text-align:right}\n.tabel .nama{font-weight:700}\n.tabel .sub{font-size:12px;color:var(--pudar)}\n.tabel tr:last-child td{border-bottom:0}\n.no{color:var(--pudar);font-size:12px;width:36px}\n\n/* bulan bayar per NPP */\n.bulan{display:grid;grid-template-columns:repeat(6,13px);gap:4px}\n.bulan span{width:13px;height:13px;border-radius:3px;box-sizing:border-box}\n.bulan .y{background:var(--biru)}\n.bulan .t{border:2px solid var(--m4)}\n.bulan-label{display:grid;grid-template-columns:repeat(6,13px);gap:4px;font-size:10px;color:var(--pudar);text-align:center}\n.npp-mini{display:flex;flex-direction:column;gap:4px}\n.npp-mini .r{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--pudar)}\n.npp-mini .r b{width:58px;font-weight:600;color:var(--teks)}\n\n/* ---------- grafik ---------- */\n.bar-tumpuk{display:flex;gap:2px;height:22px;border-radius:6px;overflow:hidden}\n.bar-tumpuk div{min-width:3px}\n.rekap-baris{display:grid;grid-template-columns:minmax(178px,1.4fr) minmax(70px,1.6fr) 56px 50px;gap:14px;align-items:center;min-height:48px;border-top:1px solid var(--garis);padding:0 4px;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left;cursor:pointer}\n.rekap-baris:hover{background:#FAFBFD}\n.rekap-baris .lbl{display:flex;align-items:center;gap:10px}\n.rekap-baris .lbl small{display:block;color:var(--pudar);font-size:12px;white-space:nowrap}\n.rekap-baris .lbl>span{white-space:nowrap;font-weight:600}\n.rekap-baris .trek{height:12px;background:#EEF0F4;border-radius:4px;overflow:hidden}\n.rekap-baris .trek div{height:12px;border-radius:4px}\n.rekap-baris .n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}\n.rekap-baris .n small{display:block;font-size:11px;color:var(--pudar);font-weight:500}\n.rekap-kepala{display:grid;grid-template-columns:minmax(178px,1.4fr) minmax(70px,1.6fr) 56px 50px;gap:14px;padding:0 4px 6px;font-size:11px;font-weight:700;color:var(--pudar);text-transform:uppercase;letter-spacing:.6px}\n.rekap-kepala span:nth-child(n+3){text-align:right}\n.papan{display:flex;flex-direction:column}\n.papan .baris{display:flex;align-items:center;gap:12px;min-height:56px;border-top:1px solid var(--garis);cursor:pointer;padding:0 4px;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left}\n.papan .baris:hover{background:#FAFBFD}\n.papan .baris:first-child{border-top:0}\n.peringkat{width:28px;height:28px;border-radius:50%;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}\n.papan .tengah{flex:1;min-width:0}\n.papan .tengah b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.papan .tengah small{display:block;color:var(--pudar);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\n.tren{display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:8px}\n.tren .k{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}\n.tren .b{width:100%;max-width:56px;background:var(--tepat);border-radius:6px 6px 0 0}\n.tren .v{font-weight:700;font-size:13px}\n.tren .t{font-size:11px;color:var(--pudar)}\n\n/* ---------- pemberitahuan ---------- */\n.info{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:var(--kuningL);color:#5C3D00;font-size:14px}\n.info.biru{background:var(--biruL);color:#22356F}\n.info.merah{background:var(--merahL);color:#7E1A1A}\n.info svg{width:18px;height:18px;flex:none;margin-top:2px}\n.kosong{text-align:center;color:var(--pudar);padding:36px 16px}\n.lepas{border:2px dashed var(--garis2);border-radius:var(--r);padding:28px;text-align:center;background:#fff;display:flex;flex-direction:column;align-items:center;gap:10px}\n.lepas.aktif{border-color:var(--biru);background:var(--biruL)}\n.lepas p{margin:0;color:var(--pudar)}\n.daftar-hasil{display:flex;flex-direction:column;gap:6px;font-size:14px}\n.daftar-hasil .ok{color:#155C40}\n.daftar-hasil .gagal{color:#9E2A22}\n\n/* ---------- laci rincian ---------- */\n.laci-latar{position:fixed;inset:0;background:rgba(16,24,40,.32);z-index:40}\n.laci{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--latar);z-index:41;overflow-y:auto;box-shadow:-8px 0 24px rgba(16,24,40,.18);display:flex;flex-direction:column}\n.laci-kepala{position:sticky;top:0;background:var(--biru);color:#fff;padding:16px 16px 16px 20px;display:flex;align-items:flex-start;gap:12px;z-index:2}\n.laci-kepala h2{font-size:20px}\n.laci-kepala .sub{color:#DCE3F5;font-size:13px;margin-top:3px}\n.laci-kepala .tutup{margin-left:auto;background:none;border:0;color:#fff;width:40px;height:40px;border-radius:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}\n.laci-kepala .tutup:hover{background:rgba(255,255,255,.15)}\n.laci-isi{padding:16px;display:flex;flex-direction:column;gap:14px}\n.npp-kartu{border:1px solid var(--garis);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}\n.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13px}\n.kv dt{color:var(--pudar)}\n.kv dd{margin:0;font-weight:600}\n.hasil-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}\n.hasil-grid button{min-height:40px;border:1px solid var(--garis2);border-radius:10px;background:#fff;font-weight:500;cursor:pointer;font-size:13px}\n.hasil-grid button[aria-pressed=\"true\"]{border:2px solid var(--biru);background:var(--biruL);color:var(--biru);font-weight:700}\n.riwayat{display:flex;flex-direction:column}\n.riwayat .r{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--garis);font-size:13px}\n.riwayat .r:first-child{border-top:0}\n.riwayat .r .w{color:var(--pudar);width:92px;flex:none}\n\n/* ---------- hubungi ---------- */\n.antre .tabel td{vertical-align:top}\n.panel-hasil{background:#F7F8FA;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;margin-top:8px}\n.panel-hasil .judul{font-weight:700;font-size:13px}\n.panel-hasil .tombol{display:flex;flex-wrap:wrap;gap:6px}\n.kemajuan{height:8px;background:#E3E6EC;border-radius:4px;overflow:hidden}\n.kemajuan div{height:8px;background:var(--wa)}\n\n/* ---------- laporan ---------- */\n.laporan-tata{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);gap:18px;align-items:start}\n.opsi{display:flex;flex-direction:column;gap:14px}\n.opsi label.cek{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer}\n.opsi label.cek input{width:18px;height:18px;margin-top:2px;flex:none}\n.pratinjau-gambar{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}\n.gambar-kartu{background:#fff;border-radius:12px;box-shadow:var(--bayang);padding:10px;display:flex;flex-direction:column;gap:8px}\n.gambar-kartu img{width:100%;border-radius:6px;border:1px solid var(--garis);cursor:zoom-in;background:#fff}\n.gambar-kartu .aksi{display:flex;gap:6px;flex-wrap:wrap}\n.teks-laporan{font:14px/1.5 var(--huruf);white-space:pre-wrap}\ntextarea.inp.teks-laporan{min-height:440px}\n\n/* ---------- dialog & toast ---------- */\n.dialog-latar{position:fixed;inset:0;background:rgba(16,24,40,.4);z-index:60;display:flex;align-items:center;justify-content:center;padding:20px}\n.dialog{background:#fff;border-radius:16px;box-shadow:0 20px 50px rgba(16,24,40,.3);width:min(620px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:22px;display:flex;flex-direction:column;gap:14px}\n.dialog.lebar{width:min(1100px,100%)}\n.dialog h2{font-size:19px}\n.dialog .aksi{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}\n.dialog img.penuh{width:100%;border:1px solid var(--garis);border-radius:8px}\n.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#1B2430;color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:.2s;z-index:80;max-width:min(560px,calc(100vw - 32px))}\n.toast.tampil{opacity:1;transform:translateX(-50%) translateY(0)}\n\n/* ---------- layar sedang & tablet ---------- */\n@media (max-width:1100px){\n  .app{grid-template-columns:86px minmax(0,1fr);background:linear-gradient(90deg,var(--biru) 86px,var(--latar) 86px)}\n  .sisi-bawah{display:none}\n  .sisi{padding:16px 8px;align-items:stretch}\n  .merek-sub,.sisi-bawah span.panjang{display:none}\n  .merek-judul{font-size:13px;text-align:center}\n  .nav button{flex-direction:column;gap:3px;min-height:58px;padding:6px 2px;font-size:11px;text-align:center;justify-content:center}\n  .nav .lencana{position:absolute;margin:0;transform:translate(18px,-16px);font-size:10px;padding:0 6px}\n  .nav button{position:relative}\n  .isi{padding:20px 20px 40px}\n  .laporan-tata{grid-template-columns:minmax(0,1fr)}\n}\n@media (max-width:760px){\n  .app{grid-template-columns:minmax(0,1fr);background:var(--latar)}\n  .sisi{position:sticky;height:auto;flex-direction:row;align-items:center;padding:8px;gap:8px;z-index:30;overflow-x:auto}\n  .merek,.sisi-bawah{display:none}\n  .nav{flex-direction:row;flex:1}\n  .nav button{min-width:76px}\n  .rekap-baris,.rekap-kepala{grid-template-columns:minmax(120px,1fr) minmax(60px,1fr) 52px 52px;gap:8px}\n}\n@media print{.sisi,.kepala-aksi,.laci,.laci-latar{display:none!important}.app{display:block}}\n\n/* ---------- dasbor v2 ---------- */\n.grid5{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:14px}\n.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}\nbutton.ubin{border:0;text-align:left;font:inherit;color:inherit;cursor:pointer}\n.ubin.klikable:hover,.ubin-kecil:hover{box-shadow:0 0 0 2px var(--biru2),var(--bayang)}\n.ubin .besar{font-size:30px}\n.pil-contoh{font-size:11px;font-weight:700;color:#5C3D00;background:var(--kuningL);border-radius:999px;padding:3px 10px}\nsvg.grafik{width:100%;height:auto;display:block;font:12px var(--huruf);fill:var(--pudar)}\nsvg.grafik text{fill:currentColor;color:var(--pudar)}\nsvg.grafik text[fill]{color:inherit}\n.grafik-tombol{display:block;width:100%;padding:0;border:0;background:none;cursor:pointer;border-radius:10px}\n.grafik-tombol:hover{background:#FAFBFD}\n.catatan-grafik{margin:8px 0 0;font-size:14px;color:var(--teks)}\n.catatan-kecil{margin:6px 0 0;font-size:12px;color:var(--pudar)}\n.tunggak-kepala,.tunggak-baris{display:grid;grid-template-columns:118px minmax(40px,1fr) 52px minmax(40px,1fr) 74px;gap:10px;align-items:center}\n.tunggak-kepala{font-size:11px;font-weight:700;color:var(--pudar);text-transform:uppercase;letter-spacing:.6px;padding:0 4px 6px}\n.tunggak-baris{width:100%;min-height:44px;border:0;border-top:1px solid var(--garis);background:none;padding:0 4px;text-align:left;cursor:pointer;font:inherit;font-size:13px;color:inherit}\n.tunggak-baris:hover{background:#FAFBFD}\n.tunggak-baris .trek{height:12px;background:#EEF0F4;border-radius:4px;overflow:hidden}\n.tunggak-baris .trek div{height:12px;border-radius:4px}\n.tunggak-baris .n{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}\n.kartu-risiko{border-top:5px solid var(--m6)}\n.risiko-angka{display:flex;flex-direction:column;gap:2px}\n.risiko-angka span{font-size:12px;color:var(--pudar)}\n.risiko-angka b{font-size:21px;font-variant-numeric:tabular-nums}\n.risiko-angka em{font-style:normal;color:var(--m6)}\n.ubin-kecil{border:0;border-radius:10px;padding:10px 12px;background:#EEF0F4;display:flex;flex-direction:column;align-items:flex-start;cursor:pointer;font:inherit;color:inherit}\n.ubin-kecil b{font-size:24px;line-height:1.1}\n.ubin-kecil span{font-size:12px;font-weight:600}\n.ubin-kecil.baik{background:var(--tepatL);color:#155C40}\n.ubin-kecil.buruk{background:var(--merahL);color:var(--m6)}\n.matriks{display:grid;grid-template-columns:128px repeat(4,minmax(0,1fr));gap:4px;margin-top:12px;font-size:12px;text-align:center}\n.matriks [role=columnheader]{color:var(--pudar);font-weight:700;padding:4px 0}\n.matriks .pojok,.matriks .kiri{text-align:left;font-weight:600;color:var(--teks);padding:8px 0}\n.matriks .pojok{color:var(--pudar)}\n.matriks .sel{border:0;border-radius:6px;padding:9px 0;font:inherit;font-weight:700}\n.matriks button.sel{cursor:pointer}\n.matriks button.sel:hover{outline:2px solid var(--biru2)}\n.matriks .sama{background:#E3E6EC}\n.matriks .baik{background:#BFE3CD;color:#155C40}\n.matriks .buruk{background:#F4C9C4;color:var(--m6)}\n.matriks .nol{background:#F7F8FA;color:#9AA3B2;font-weight:400}\n.histo{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:end;height:190px;padding-top:6px}\n.histo .kolom{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%;border:0;background:none;cursor:pointer;font:inherit;color:inherit;border-radius:8px}\n.histo .kolom:hover{background:#FAFBFD}\n.histo .b{width:100%;max-width:58px;border-radius:6px 6px 0 0;display:block}\n.histo small{font-size:12px;color:var(--pudar)}\n.trek-kecil{height:8px;background:#EEF0F4;border-radius:4px;overflow:hidden;display:inline-block;width:70%;vertical-align:middle;margin-right:6px}\n.trek-kecil div{height:8px;background:var(--tepat)}\n.sinkron-status{display:flex;align-items:center;background:none;border:0;color:inherit;font:inherit;font-size:12px;padding:0;cursor:pointer;text-align:left}\n\n/* panel daftar SPPG */\n.kartu-sppg{padding:12px 14px;display:flex;flex-direction:column;gap:6px}\n.kartu-sppg.sudah{background:#F4FAF6}\n.kartu-sppg .atas{display:flex;align-items:center;justify-content:space-between;gap:10px}\n.kartu-sppg .nama-sppg{border:0;background:none;padding:0;font:inherit;font-weight:700;font-size:15px;color:var(--teks);cursor:pointer;text-align:left}\n.kartu-sppg .nama-sppg:hover{color:var(--biru)}\n.kartu-sppg .sub{font-size:12px;color:var(--pudar)}\n.kartu-sppg .pic{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--garis);padding-top:8px}\n.kartu-sppg .pic div:first-child{display:flex;flex-direction:column}\n.kartu-sppg .pic span{font-size:12px;color:var(--pudar)}\n.kartu-sppg .tombol{display:flex;gap:6px;flex-wrap:wrap}\n.kartu-sppg .kontak{font-size:12px;color:var(--pudar)}\n\n/* mode rapat */\n.rapat{position:fixed;inset:0;z-index:90;background:var(--latar);overflow:auto;display:flex;flex-direction:column}\n.rapat-kepala{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--biru);color:#fff;padding:14px 28px;position:sticky;top:0;z-index:2}\n.rapat-kepala b{font-size:22px;display:block}\n.rapat-kepala span{color:#DCE3F5;font-size:14px}\n.rapat-titik{display:flex;gap:8px}\n.rapat-titik button{width:12px;height:12px;border-radius:50%;border:0;background:rgba(255,255,255,.35);cursor:pointer;padding:0}\n.rapat-titik button[aria-current=\"true\"]{background:#fff}\n.rapat-tombol{display:flex;gap:6px}\n.rapat-tombol button{width:44px;height:44px;border-radius:22px;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:20px;cursor:pointer}\n.rapat-tombol button:hover{background:rgba(255,255,255,.25)}\n.rapat-isi{padding:24px 28px 40px;display:flex;flex-direction:column;gap:18px;max-width:1700px;width:100%;margin:0 auto;box-sizing:border-box;zoom:1.12}\n.rapat [data-a=\"klik\"],.rapat [data-a=\"laci\"],.rapat [data-a=\"hubungiIds\"],.rapat [data-in]{pointer-events:none}\n.rapat .btn.polos,.rapat [data-a=\"hubungiIds\"]{display:none}\n@media (min-width:1700px){.rapat-isi{zoom:1.3}}\n@media (max-width:760px){.grid3{grid-template-columns:minmax(0,1fr)}.matriks{grid-template-columns:96px repeat(4,minmax(0,1fr))}}\n\nsvg.grafik .lbl{paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}\n\n.lensa-blok{border-top:1px solid var(--garis);margin-top:14px;padding-top:14px;display:flex;flex-direction:column;gap:6px}\n.btn-sinkron{display:flex;align-items:center;gap:8px;width:100%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:10px;padding:8px 10px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;flex-wrap:wrap;text-align:left}\n.btn-sinkron svg{width:16px;height:16px}\n.btn-sinkron small{flex-basis:100%;font-weight:400;font-size:11px;opacity:.8;margin-left:24px;margin-top:-4px}\n.btn-sinkron:hover{background:rgba(255,255,255,.2)}.btn-sinkron:disabled{opacity:.6;cursor:default}\n\n/* ================= LENSA PK 2.0 ================= */\n.grid-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:14px}\n.kpi{background:#fff;border-radius:var(--r);box-shadow:var(--bayang);padding:16px 18px;display:flex;flex-direction:column;gap:4px;cursor:pointer}\n.kpi:hover,.ubin[role=button]:hover,.baris-seg:hover,.baris-kelas:hover,.baris-pk:hover,tr[role=button]:hover{box-shadow:0 0 0 2px var(--biru2),var(--bayang)}\n.kpi-l{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--pudar)}\n.kpi-n{font-size:30px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}\n.kpi-s{font-size:12.5px;color:var(--pudar)}\n.grid-ubin{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}\n.grid-ubin .ubin{box-shadow:none;border:1px solid var(--garis);padding:12px 14px;border-radius:12px;gap:2px}\n.grid-ubin .ubin b{font-size:24px;line-height:1.15}\n.ubin[role=button],.baris-seg,.baris-kelas,.baris-pk,tr[role=button],g[role=button]{cursor:pointer}\n.legenda{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--pudar)}\n.legenda i{display:inline-block;width:12px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}\n.batang{display:flex;height:16px;border-radius:5px;overflow:hidden;background:#EEF0F4;flex:1;min-width:60px}\n.batang.tipis{height:10px}\n.batang span{display:block;height:100%}\n.baris-seg{display:grid;grid-template-columns:minmax(150px,1.2fr) 2fr minmax(130px,1fr);gap:12px;align-items:center;padding:6px 4px;border-radius:8px}\n.baris-kelas{display:grid;grid-template-columns:110px 1fr 100px;gap:10px;align-items:center;padding:4px;border-radius:8px}\n.baris-ef{display:grid;grid-template-columns:1fr 120px 44px;gap:10px;align-items:center;font-size:13px}\n.kanan{text-align:right;font-size:12.5px}\n.catatan{font-size:12.5px;color:var(--pudar);border-top:1px solid var(--garis);padding-top:10px}\n.tabel-wrap{overflow-x:auto}\n.tabel td.r,.tabel th.r{text-align:right}\n.baris-pk{display:grid;grid-template-columns:4px 1fr auto;gap:12px;align-items:center;padding:10px 8px 10px 0;border-top:1px solid var(--garis);border-radius:6px}\n.baris-pk .strip{align-self:stretch;border-radius:2px}\n.pk-isi{display:flex;flex-direction:column;min-width:0}\n.pk-isi b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis}\n.daftar{display:flex;flex-direction:column}\n.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}\n.aksi-baris{display:flex;gap:8px;flex-wrap:wrap}\n.ikon-btn{margin-left:auto;background:none;border:0;color:#fff;width:40px;height:40px;border-radius:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}\n.ikon-btn:hover{background:rgba(255,255,255,.15)}\n.kartu h3{margin:0 0 8px;font-size:15px}\n.kv span{color:var(--pudar)}\n.baris-kontak{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--garis)}\n.pil{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:var(--biruL,#E8EDF8);color:var(--biru)}\n.btn.wa{background:#1F7A56;color:#fff;border-color:#1F7A56}\n.gambar-rinci{width:100%;border:1px solid var(--garis);border-radius:8px;margin-top:10px}\n.tbl-wrap{overflow-x:auto}\ntable.rinci{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}\ntable.rinci th,table.rinci td{padding:6px 8px;border-bottom:1px solid var(--garis);text-align:right}\ntable.rinci th:first-child,table.rinci td:first-child{text-align:left}\ntable.rinci tr.tot td{font-weight:700;border-top:2px solid var(--teks)}\n.daftar-hasil .info{color:var(--pudar)}\nsvg.grafik .grid{stroke:var(--garis)}\nsvg.grafik .ax{font-size:11px}\nsvg.grafik .lbl{font-size:12px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round}\nsvg.grafik .ln-ini{fill:none;stroke:#0E5A5F;stroke-width:3}\nsvg.grafik .ln-lalu{fill:none;stroke:#9AA3B2;stroke-width:2}\nsvg.grafik .ln-proy{fill:none;stroke:#0E5A5F;stroke-width:2;stroke-dasharray:5 4}\nsvg.grafik .ln-target{stroke:#C2410C;stroke-width:1.5;stroke-dasharray:6 4}\nsvg.grafik .ln-itb{fill:none;stroke:#1F7A56;stroke-width:2.5}\nsvg.grafik .ln-itw{fill:none;stroke:#3F63B8;stroke-width:2.5}\nsvg.grafik .pt-itb{fill:#1F7A56}\nsvg.grafik .pt-itw{fill:#3F63B8}\n@media (max-width:760px){.baris-seg{grid-template-columns:1fr}.baris-seg .kanan{text-align:left}.kpi-n{font-size:26px}}\n.laci-kepala .btn.polos{color:#fff;border-color:rgba(255,255,255,.4);background:transparent;white-space:nowrap}\n.kepala{margin-bottom:4px}\n.isi>.grid-kpi,.isi>.kartu,.isi>.grid2{margin-bottom:18px}\n/* --- tahap 2: sinkron, PIN, \"Sudah terkirim?\" --- */\n.sisi-bawah .btn-sinkron{width:100%;justify-content:center;margin-bottom:4px}\n.sisi-bawah .kecil,.kecil{font-size:12px}\n.tanya-wa{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#E3F2E9;border:1px solid #BFE0CC;color:#1B4D33;border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:14px}\n.tanya-wa span{flex:1;min-width:160px}\n.form-sinkron{display:flex;flex-direction:column;gap:8px;margin-top:10px}\n.form-sinkron .field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--pudar)}\n.kepala-aksi{display:flex;gap:8px;flex-wrap:wrap}\n@media (max-width:760px){.sisi .btn-sinkron{display:none}}\n\n/* tambahan saat dasbor/data dipasang di dalam aplikasi (Shadow DOM) */\n:host{display:block;color:var(--teks);font:15px/1.45 var(--huruf)}\n.isi{padding:0 0 32px}\n.kepala{margin-top:4px}\n.kepala h1{font-size:20px}\n@media (min-width:760px){.kepala{display:none}}\n@media (max-width:600px){.grid-kpi{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.kpi-n{font-size:22px}}\n.form-sinkron{max-width:760px}\n/* komputer: ukuran huruf kartu bawah dasbor setara kartu angka di atas */\n@media (min-width:760px){\n  table.tabel{font-size:15.5px}\n  .tabel th{font-size:13px;padding:12px 14px}\n  .tabel td{padding:12px 14px}\n  .baris-ef{font-size:15px;grid-template-columns:1fr 160px 52px}\n  .baris-seg,.baris-kelas{font-size:15px}\n  .legenda{font-size:13px}\n  .catatan{font-size:13.5px}\n  .catatan-kecil{font-size:13px}\n  .grid-ubin .ubin b{font-size:clamp(18px,1.45vw,28px);white-space:nowrap}\n  .ubin-kecil b{font-size:28px}.ubin-kecil span{font-size:13px}\n}\n\n/* Perangkat & pengguna (2.3) */\n.lencana{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap;vertical-align:1px}\n.l-aktif{background:#E3F4EC;color:#1F7A56}.l-tutup{background:#FFF1D6;color:#8A5A00}.l-cabut{background:#ECEEF2;color:#5B6470}\n.l-lihat{background:#E8ECF7;color:#2B4FA8}.l-pemilik{background:#F6EBD2;color:#7A5A12}.l-ini{background:#DDEFEF;color:#0E5A5F}\n.baris-mati td{opacity:.6}\n/* Pusat Kendali (2.7) */\n.l-peran{background:#EEF0F4;color:#3D4654}.l-app{color:#fff;font-weight:600}\n.sub-judul{font-size:14px;margin:20px 0 6px;color:var(--teks,#1E2430)}.sub-judul:first-child{margin-top:2px}.sub-judul .sub{font-weight:400}\n.daftar-lemari{margin:0;padding-left:18px;font-size:13.5px;line-height:1.6}\n.aksi-sel{white-space:nowrap;text-align:right}.aksi-sel .btn{margin-left:4px}\n.form-undang{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px;margin:6px 0 4px}\n.kode-undangan{border:1.5px dashed #C9972B;background:#FFFBF0;border-radius:12px;padding:12px 14px;margin:0 0 14px}\n.kode-undangan code{display:block;margin:8px 0;padding:10px;background:#fff;border:1px solid #E6DCC3;border-radius:8px;font:13px ui-monospace,Consolas,monospace;word-break:break-all}\n.baris-undangan{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--garis);font-size:13.5px}\n.daftar-undangan{margin-top:8px}\n.riwayat-cabut{margin-top:10px;font-size:13.5px}.riwayat-cabut summary{cursor:pointer;color:var(--pudar);padding:4px 0}\n/* Pusat Kendali 2.9 (LENSA Suite 4A): SIGAP Jakon — pemilih CV Mitra, permintaan akses */\n.pilih-cv{grid-column:1/-1;border:1px solid var(--garis);border-radius:10px;padding:10px 12px;background:#FFFCF7}\n.pilih-cv .inp{margin:6px 0}\n.daftar-cv{max-height:240px;overflow:auto;border-top:1px solid var(--garis);margin-top:4px}\n.baris-cv{display:flex;gap:8px;align-items:flex-start;padding:6px 2px;border-bottom:1px solid var(--garis);font-size:13.5px;cursor:pointer}\n.baris-cv input{margin-top:3px}.baris-cv .sub{display:block}\n.permintaan{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--garis);font-size:13.5px;flex-wrap:wrap}\n.l-mitra{background:#FDEBDD;color:#9A3412}.l-pengamat{background:#E6F0FA;color:#1D4E89}\n.setujui-catatan{background:#FFF4EA;border:1px solid #F3C9A4;border-radius:10px;padding:8px 12px;margin:0 0 10px;font-size:13.5px}\n";
 
 /* === 11-xlsx.js === */
@@ -9129,10 +9551,10 @@ function gambarRincian(p, r) {
  *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
  *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.9.2';
+var VERSI_APP = '2.12.1';
 var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
-function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, antre: [], gagal: [], galatAntre: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
+function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, zaman: '', seq: 0, antre: [], gagal: [], galatAntre: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
 var APP = appKosong();
 var PBKDF2_ULANG = 250000;
 
@@ -9289,7 +9711,7 @@ async function pulihkanCadangan(file, mintaPin) {
   var sink = APP.sinkron;
   pakaiMuatan(d);
   ['url', 'kunci', 'idp', 'token', 'idKlien', 'akses', 'terakhirOk'].forEach(function (k) { APP.sinkron[k] = sink[k]; }); // sambungan perangkat ini tetap
-  APP.sinkron.hash = {}; // tarik berikutnya mengambil ulang semua tab
+  ulangTarikSemua(APP.sinkron); // tarik berikutnya mengambil ulang semua tab (yang beda)
   await simpanSekarang();
 }
 async function hapusSemua() {
@@ -9364,7 +9786,7 @@ async function imporBerkas(files) {
     }
   }
   // tab dari unduhan spreadsheet bisa versi lama: kosongkan VERSI_DB agar kolom baru disiapkan (pastikanSiap_)
-  if (spreadsheet) { delete GAS.props.VERSI_DB; siapkanMesin(); muatPengaturan_(); APP.sinkron.hash = {}; }
+  if (spreadsheet) { delete GAS.props.VERSI_DB; siapkanMesin(); muatPengaturan_(); ulangTarikSemua(APP.sinkron); }
   antre.sort(function (a, b) { return (PRIORITAS_IMPOR[a.an.jenis] - PRIORITAS_IMPOR[b.an.jenis]) || (a.nama < b.nama ? -1 : 1); });
   var kirim = [], serverLama = serverSebelum('1.23');
   antre.forEach(function (x) {
@@ -9411,9 +9833,9 @@ function bacaTabAman(nama) {
  * ---------------------------------------------------------------------- */
 var FN_TULIS = ['apiSimpanPk', 'apiGeotag', 'apiKelompok', 'apiGantiKelompok', 'apiSimpanKontak', 'apiLepasKontak', 'apiSimpanPengurus',
   'apiPkKontak', 'apiSatukanOrang', 'apiCatat', 'apiSimpanTemplat', 'apiHapusTemplat', 'apiCentang', 'apiCentangPk', 'apiSimpanJadwal', 'apiHitung', 'apiImporApp',
-  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi', 'apiImporLaporan'];
+  'apiPutuskanTinjau', 'apiUsulanBukan', 'apiSimpanRedaksi', 'apiImporLaporan', 'apiAturGrup', 'apiGrupBubar'];
 /** Hanya bisa di server (butuh internet / spreadsheet lain). */
-var FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg'];
+var FN_LANGSUNG = ['apiUraiPeta', 'apiJembatanSppg', 'apiPerbarui360'];
 var SINK = { janji: null, tunda: null, setelah: null, berjalan: false };
 
 function sinkronAktif() { var s = APP.sinkron; return !!(s && s.url && (s.token || s.kunci)); }
@@ -9541,6 +9963,57 @@ function gantiTabDariServer(tab) {
   gasSentuh();
 }
 
+/* ---------- 2.10 (LENSA Suite 5A): sinkron per baris (kit/baris.js, server LENSA 1.31+) ---------- */
+var SIDIK_CACHE = { diubah: -1, o: null };
+function lembarPerangkat(n) { return GAS.tab.filter(function (x) { return x.nama === n; })[0] || null; }
+function sidikLembarPerangkat(n) {
+  var sh = lembarPerangkat(n);
+  return sh ? KitBaris.sidikLembar(KitBaris.sidikSemua(sh.baris.slice(0, sh.getLastRow()))) : '';
+}
+/** Sidik semua tab di perangkat: tab yang sama dengan spreadsheet tidak dikirim server. */
+function sidikPerangkat() {
+  if (SIDIK_CACHE.diubah === GAS.diubah && SIDIK_CACHE.o) return SIDIK_CACHE.o;
+  var o = {};
+  GAS.tab.forEach(function (sh) { o[sh.nama] = sidikLembarPerangkat(sh.nama); });
+  SIDIK_CACHE = { diubah: GAS.diubah, o: o };
+  return o;
+}
+/** Terapkan jawaban "baris". Hasil: nama tab yang sidiknya masih beda dengan spreadsheet. */
+function terapkanBaris(t) {
+  var beda = [], nama = Object.keys(t.tab || {});
+  nama.forEach(function (n) {
+    var x = t.tab[n], sh = lembarPerangkat(n), baris;
+    if (x.utuh) baris = x.b.map(function (r) { return r.map(nilaiDariServer); });
+    else baris = KitBaris.tambal(sh ? sh.baris : [], x.n, x.b.map(function (p) { return [p[0], p[1].map(nilaiDariServer)]; }));
+    if (sh) sh.baris = baris; else GAS.tab.push(new GasLembar(n, baris));
+  });
+  if (nama.length) { _PEMETAAN = null; _SS = null; muatPengaturan_(); gasSentuh(); }
+  nama.forEach(function (n) { if (sidikLembarPerangkat(n) !== t.tab[n].sidik) beda.push(n); });
+  return beda;
+}
+/** Tarik per baris. null = server lama (belum 1.31) atau ada tindakan baru selama menarik. */
+async function tarikBaris(s, galatKirim) {
+  var t;
+  try { t = await panggilServer({ aksi: 'baris', zaman: s.zaman || '', seq: s.seq || 0, sidik: sidikPerangkat(), penuh: [], galat: galatKirim, versiApp: VERSI_APP }); }
+  catch (e) { if (/Aksi tidak dikenal/.test(e.message)) { s.barisLama = Date.now(); return { lama: true }; } throw e; }
+  if (s.antre.length) return { galatTerkirim: true, ulang: true };
+  var nama = Object.keys(t.tab || {}), beda = terapkanBaris(t), nb = jumlahBarisKiriman(t);
+  if (beda.length) { // isi perangkat menyimpang dari spreadsheet: tab itu ditarik utuh (memperbaiki diri sendiri)
+    var t2 = await panggilServer({ aksi: 'baris', zaman: t.zaman, seq: t.seq, sidik: sidikPerangkat(), penuh: beda, galat: [], versiApp: VERSI_APP });
+    if (s.antre.length) return { galatTerkirim: true, ulang: true };
+    var masih = terapkanBaris(t2);
+    if (masih.length) catatGalatApp('sinkron per baris', 'Sidik tab tetap beda setelah ditarik utuh: ' + masih.join(', '));
+    Object.keys(t2.tab || {}).forEach(function (n) { if (nama.indexOf(n) < 0) nama.push(n); });
+    nb += jumlahBarisKiriman(t2);
+    t.seq = t2.seq; t.zaman = t2.zaman;
+  }
+  s.zaman = t.zaman; s.seq = t.seq;
+  return { galatTerkirim: true, t: t, nama: nama, baris: nb };
+}
+function jumlahBarisKiriman(t) { return Object.keys(t.tab || {}).reduce(function (j, n) { return j + (t.tab[n].b || []).length; }, 0); }
+/** Tarik ulang semua (mis. setelah tindakan ditolak server): tab yang beda ditarik utuh. */
+function ulangTarikSemua(s) { s = s || APP.sinkron; s.hash = {}; s.zaman = ''; s.seq = 0; }
+
 /** Kirim antrean, lalu tarik tab yang berubah. Hasil {kirim, gagal, tab}. */
 function sinkronkan() {
   if (!sinkronAktif()) return Promise.reject(new Error('Sinkron belum disambungkan.'));
@@ -9561,20 +10034,32 @@ function sinkronkan() {
           var h = peta[op.cid];
           if (!h) return;
           if (h.ok) hasil.kirim++;
-          else { hasil.gagal++; s.gagal.unshift({ waktu: gasTanggal(new Date(), '', 'yyyy-MM-dd HH:mm'), fn: op.fn, galat: h.galat }); s.gagal = s.gagal.slice(0, 20); s.hash = {}; }
+          else { hasil.gagal++; s.gagal.unshift({ waktu: gasTanggal(new Date(), '', 'yyyy-MM-dd HH:mm'), fn: op.fn, galat: h.galat }); s.gagal = s.gagal.slice(0, 20); ulangTarikSemua(s); }
         });
         if (!batch.some(function (op) { return peta[op.cid]; })) throw new Error('Server tidak memproses kiriman.');
         s.antre = s.antre.filter(function (op) { return !peta[op.cid]; });
         await simpanSekarang();
       }
       var galatKirim = (s.galatAntre || []).slice(0, 20); // 2.7: galat aplikasi dititipkan (server 1.25+ mencatatnya di tab GALAT)
-      var t = await panggilServer({ aksi: 'tab', hash: s.hash, galat: galatKirim });
-      if (galatKirim.length) s.galatAntre = (s.galatAntre || []).filter(function (g) { return galatKirim.indexOf(g) < 0; });
-      if (s.antre.length) { jadwalSinkron(1500); return hasil; } // ada tindakan baru selama menarik: ulang sebentar lagi
-      var nama = Object.keys(t.tab || {});
-      if (nama.length) { gantiTabDariServer(t.tab); if (t.versi) GAS.props.VERSI_DB = t.versi; } // spreadsheet versi lama → kolom baru disiapkan lagi di perangkat
-      hasil.tab = nama.length;
-      s.hash = t.hash || {}; s.sppg = t.sppg || null; s.urlSheet = t.url || ''; s.versiServer = t.versi || '';
+      var buangGalat = function () { if (galatKirim.length) s.galatAntre = (s.galatAntre || []).filter(function (g) { return galatKirim.indexOf(g) < 0; }); };
+      var t, nama, b = null;
+      // 2.10: per baris bila server sudah 1.31 (server lama dicoba lagi tiap 3 jam)
+      if (!(s.barisLama && Date.now() - s.barisLama < 3 * 3600e3)) b = await tarikBaris(s, galatKirim);
+      if (b && !b.lama) {
+        buangGalat();
+        if (b.ulang) { jadwalSinkron(1500); return hasil; } // ada tindakan baru selama menarik: ulang sebentar lagi
+        t = b.t; nama = b.nama; s.barisLama = 0; s.hash = {};
+        if (nama.length && t.versi) GAS.props.VERSI_DB = t.versi;
+        hasil.baris = b.baris;
+      } else {
+        t = await panggilServer({ aksi: 'tab', hash: s.hash, galat: galatKirim });
+        buangGalat();
+        if (s.antre.length) { jadwalSinkron(1500); return hasil; }
+        nama = Object.keys(t.tab || {});
+        if (nama.length) { gantiTabDariServer(t.tab); if (t.versi) GAS.props.VERSI_DB = t.versi; } // spreadsheet versi lama → kolom baru disiapkan lagi di perangkat
+        s.hash = t.hash || {};
+      }
+      hasil.tab = nama.length; s.sppg = t.sppg || null; s.urlSheet = t.url || ''; s.versiServer = t.versi || '';
       if (t.akses) s.akses = t.akses;
       s.terakhir = gasTanggal(new Date(), '', 'yyyy-MM-dd HH:mm'); s.galat = ''; s.terakhirOk = Date.now();
       await simpanSekarang();
@@ -9624,7 +10109,7 @@ async function gabungDenganKode(teks) {
   var s = APP.sinkron;
   if (!s.idKlien) { s.idKlien = idKlienBaru(); await simpanSekarang(); }
   var j = await panggilServer({ aksi: 'gabung', kode: o.kode, idKlien: s.idKlien }, o.url, {});
-  s.url = o.url; s.idp = j.idp; s.token = j.token; s.akses = j.akses || null; s.kunci = ''; s.hash = {}; s.galat = ''; s.terakhirOk = Date.now();
+  s.url = o.url; s.idp = j.idp; s.token = j.token; s.akses = j.akses || null; s.kunci = ''; ulangTarikSemua(s); s.galat = ''; s.terakhirOk = Date.now();
   await simpanSekarang();
   var h = await sinkronkan();
   return { akses: j.akses, hasil: h };
@@ -9642,7 +10127,7 @@ async function sambungSinkron(url, kunci) {
   if (!POLA_EXEC.test(url)) throw new Error('Alamat harus berbentuk https://script.google.com/macros/s/…/exec');
   if (!kunci) throw new Error('Kunci kosong.');
   var j = await panggilServer({ aksi: 'cek' }, url, { kunci: kunci });
-  APP.sinkron.url = url; APP.sinkron.kunci = kunci; APP.sinkron.token = ''; APP.sinkron.idp = ''; APP.sinkron.hash = {}; APP.sinkron.galat = ''; APP.sinkron.serverLama = 0;
+  APP.sinkron.url = url; APP.sinkron.kunci = kunci; APP.sinkron.token = ''; APP.sinkron.idp = ''; ulangTarikSemua(APP.sinkron); APP.sinkron.galat = ''; APP.sinkron.serverLama = 0; APP.sinkron.barisLama = 0;
   await simpanSekarang();
   var h = await sinkronkan();
   return { versi: j.versi, kode: j.kode, hasil: h };
@@ -10921,7 +11406,7 @@ async function jalankanGsr(fn, args) {
     if (fn === 'apiUraiPeta' && !/https?:\/\//.test(String(args[0] || ''))) return bersihHasil(jalankan(fn, args));
     if (navigator.onLine === false) throw new Error('Perlu sinyal untuk tindakan ini.');
     var v = await panggilLangsung(fn, args);
-    if (fn === 'apiJembatanSppg') { try { await sinkronkan(); } catch (e) { /* diam */ } }
+    if (fn === 'apiJembatanSppg' || fn === 'apiPerbarui360') { try { await sinkronkan(); } catch (e) { /* diam */ } } // 5C.1: ringkasan baru langsung ditarik
     return v;
   }
   await new Promise(function (ok) { setTimeout(ok, 0); }); // beri kesempatan layar "memuat" tampil
@@ -11969,16 +12454,8 @@ var LEMBAGA_DESA = [
   ['Lembaga Adat Desa', / (LEMBAGA ADAT|LAD) /]
 ];
 var URUT_LEMBAGA = ['BUMDes', 'Kop. Desa Merah Putih', 'BPD', 'LKD · Posyandu', 'LKD · PKK', 'LKD · Karang Taruna', 'LKD · RT/RW', 'LKD · lainnya', 'Lembaga Adat Desa', 'Aparat / Pemerintah Desa'];
-function lembagaDesa(p) {
-  var n = ' ' + String((p.namaResmi || p.nama || '') + ' ' + (p.namaLapangan || '')).toUpperCase().replace(/[^A-Z0-9]+/g, ' ') + ' ';
-  var usahaDesa = / (BUMDES|BUMDESA|BUM DES|BUM DESA|KOPDES|KDMP|KKMP|MERAH PUTIH|KOPERASI DESA) /.test(n);
-  if (/ (BANK|BPR|PT|CV|UD|PERSERODA|PERUMDA|PERUMDAM|PDAM) /.test(n) && !usahaDesa) return '';
-  for (var i = 0; i < URUT_LEMBAGA.length; i++) {
-    var L = LEMBAGA_DESA.filter(function (x) { return x[0] === URUT_LEMBAGA[i]; })[0];
-    if (L && L[1].test(n) && (L[0] !== 'Aparat / Pemerintah Desa' || p.segmen === 'Desa' || / DESA /.test(n))) return L[0];
-  }
-  return p.segmen === 'Desa' ? 'Aparat / Pemerintah Desa' : '';
-}
+/* 5B: satu sumber dengan server (kit/grup.js) */
+function lembagaDesa(p) { return window.KitGrup.lembagaDesa(p.namaResmi || p.nama, p.namaLapangan, p.segmen); }
 function kodeSkala(p) { var s = String(p.skala || '').trim(); return s === 'MI' ? 'MI' : /^mi$/i.test(s) ? 'Mi' : /^mn$/i.test(s) ? 'Mn' : /^k$/i.test(s) ? 'K' : /^b$/i.test(s) ? 'B' : '-'; }
 function kodeJenis(p) { return p.nonAsn === 'Ya' ? 'nonasn' : 'bu'; }
 function kodeProgram(p) { var s = String(p.program || '').toUpperCase(); return /4/.test(s) ? '4P' : /3/.test(s) ? '3P' : '2P'; }
@@ -12069,9 +12546,22 @@ function pkUtama(pks) {
    dihitung langsung di HP sehingga tambah/lepas PK langsung terlihat tanpa hitung ulang.
    semua = true: kontak yang memegang 1 PK ikut (dipakai saat mencari). */
 function grupOrang(semua) {
-  var per = {};
+  // 5B (21 Nov 2026): grup manual menang; aturan kit/grup.js (SPPG per dapur, Aparat+BPD se-kabupaten, LKD+LAD per desa,
+  // RT/RW & Instansi tanpa grup otomatis); selain itu per orang. Grup yang dibubarkan tidak muncul.
+  var per = {}, atur = {}, B = bubarSet();
   S.data.pk.forEach(function (p) {
+    if (p.grupManual) return;
+    var a = window.KitGrup.aturan(p);
+    if (a && a.tanpa) return;
+    if (a) {
+      var ka = 'a:' + a.id;
+      if (B[ka]) return;
+      var g = atur[ka] || (atur[ka] = grupBaru(ka));
+      g.aturan = a; tambahKeGrup(g, p);
+      return;
+    }
     (p.kontak || []).forEach(function (c) {
+      if (B['o:' + c.id]) return;
       var x = per[c.id] || (per[c.id] = grupBaru('o:' + c.id));
       if (!x.orang) x.orang = c;
       if (x.pk.indexOf(p) < 0) tambahKeGrup(x, p);
@@ -12079,12 +12569,14 @@ function grupOrang(semua) {
   });
   var xs = Object.keys(per).map(function (k) { return per[k]; }).filter(function (x) { return semua || x.pk.length >= 2; });
   xs.forEach(function (x) { x.utama = pkUtama(x.pk); x.judul = 'Grup ' + x.utama.nama; });
-  return urutkanGrup(xs.concat(grupManual()), 'Pengurus');
+  var ys = Object.keys(atur).map(function (k) { return atur[k]; }).filter(function (x) { return semua || x.pk.length >= 2; });
+  ys.forEach(function (x) { x.utama = pkUtama(x.pk); x.judul = x.aturan.nama; });
+  return urutkanGrup(xs.concat(ys, grupManual()), 'Pengurus');
 }
 function grupManual() {
   var m = {};
   S.data.pk.forEach(function (p) { if (p.grupManual) tambahKeGrup(m[p.grupManual] || (m[p.grupManual] = grupBaru('m:' + p.grupManual)), p); });
-  return Object.keys(m).map(function (k) { var x = m[k]; x.manual = k; x.judul = 'Grup ' + k; x.utama = pkUtama(x.pk); return x; });
+  return Object.keys(m).map(function (k) { var x = m[k]; x.manual = k; x.judul = /^grup\s/i.test(k) ? k : 'Grup ' + k; x.utama = pkUtama(x.pk); return x; });
 }
 function barGrup(x) {
   var n = x.pk.length || 1;
@@ -12092,7 +12584,7 @@ function barGrup(x) {
 }
 function angkaTk(n) { return String(Math.round(+n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
 var KET_GRUP = {
-  'Pengurus': 'PK yang dipegang orang yang sama (PIC, pemilik, admin) dan grup manual. Ketuk grup untuk mengecek, menambah, atau melepas PK.',
+  'Pengurus': 'PK yang dipegang orang yang sama (PIC, pemilik, admin), grup manual, dan grup otomatis: SPPG per dapur (pengurus + relawan), aparat desa & BPD se-kabupaten, lembaga desa (LKD, LAD, kader) per desa. RT/RW dan instansi tidak digrupkan otomatis. Ketuk grup untuk mengecek, mengganti nama, menggabung, atau membubarkan.',
   'Kecamatan': 'PK per kecamatan, yang paling banyak belum ITB di atas.',
   'Kelompok saya': 'Daftar kerja buatan Anda sendiri, mis. rute kunjungan atau calon SERTAKAN. Satu PK boleh masuk beberapa kelompok.',
   'Jenis usaha': 'PK per jenis usaha (kode ILO), persentase ITW terendah di atas.',
@@ -12117,7 +12609,12 @@ function layarGrup() {
     return (S.saringG[s.k] || []).map(function (v) { return '<button class="chip tag-saring" data-a="lepassegi" data-v="' + e(s.k + '|' + v) + '" aria-label="Hapus saringan ' + e(labelDari(opsiSegi(s), v)) + '">' + e(labelDari(opsiSegi(s), v)) + ' ✕</button>'; }).join('');
   }).join('') + '<button class="chip" data-a="saringreset">Hapus semua</button></div>';
   out += '<div class="kecil" style="margin:4px 4px 10px">' + e(KET_GRUP[S.dasar] || '') + (nSar && S.dasar === 'Pengurus' ? ' Dengan saringan: grup tampil bila minimal satu PK-nya cocok.' : '') + '</div>';
-  if (S.dasar === 'Pengurus') out += blokUsulan();
+  if (S.dasar === 'Pengurus') {
+    var nBubar = ((S.data && S.data.grupBubar) || []).length;
+    out += '<div class="baris-btn" style="margin:0 0 12px"><button class="btn utama" data-a="bentukgrup">' + IKON.tambah + ' Bentuk grup cepat</button>' +
+      (nBubar ? '<button class="btn tipis" data-a="lihatbubar">Grup dibubarkan (' + nBubar + ')</button>' : '') + '</div>';
+    out += blokUsulan();
+  }
   if (S.dasar === 'Kelompok saya') out += '<button class="btn utama" style="width:100%;margin-bottom:12px" data-a="kelompokbaru">' + IKON.tambah + ' Buat kelompok: pilih PK</button>';
   return out + '<div id="hasilgrup">' + isiGrup() + '</div>';
 }
@@ -12153,11 +12650,11 @@ function isiGrup() {
     (lebih ? '<div class="kecil" style="margin:8px 4px">' + lebih + ' grup lain tidak ditampilkan; persempit dengan pencarian.</div>' : '');
 }
 function kartuGrup(x) {
-  var id = x.orang ? 'o:' + x.orang.id : x.manual ? 'm:' + x.manual : 'g:' + x.nama;
+  var id = x.orang ? 'o:' + x.orang.id : x.manual ? 'm:' + x.manual : x.aturan ? x.nama : 'g:' + x.nama;
   var per = S.dasar === 'Pengurus' || S.dasar === 'Kelompok saya';
   var utama = x.utama || x.pk[0];
   var lain = per ? x.pk.filter(function (p) { return p !== utama; }).map(function (p) { return p.nama; }) : [];
-  var siapa = x.orang ? IKON_ORANG + '<span>' + e(x.orang.nama) + '</span>' : x.manual ? IKON.grup + '<span>Grup manual</span>' : '';
+  var siapa = x.orang ? IKON_ORANG + '<span>' + e(x.orang.nama) + '</span>' : x.manual ? IKON.grup + '<span>Grup manual</span>' : x.aturan ? IKON.grup + '<span>Otomatis · ' + e(x.aturan.jenis) + '</span>' : '';
   var kanan = x.tunggakan ? '<div class="gk-kanan"><b class="gk-rp">± ' + e(rp(x.tunggakan)) + '</b><small>perk. tunggakan</small></div>'
     : (x.belum + x.telat ? '' : '<div class="gk-kanan"><span class="pill s-sudah">Semua ITB</span></div>');
   var st = [[x.sudah, 'b-sudah', 'sudah'], [x.belum, 'b-belum', 'belum'], [x.telat, 'b-telat2', 'telat']].filter(function (k) { return k[0]; })
@@ -12519,7 +13016,8 @@ function renderPanel() {
   if (!p) { lap.innerHTML = ''; document.body.style.overflow = ''; return; }
   document.body.style.overflow = 'hidden';
   var f = { pk: panelPk, grup: panelGrup, rincian: panelRincian, rinciangabung: panelRincianGabung, alamat: formAlamat, kontak: formKontak, catat: formCatat, jadwalform: formJadwal, jadwal: panelJadwal,
-    kelompok: formKelompok, geomanual: formGeoManual, info: formInfo, gantikel: formGantiKelompok, orang: panelOrang, formorang: formOrang, pilihorang: panelPilihOrang, antre: panelAntre, hubungi: panelHubungi, migrasi: panelMigrasi, janji: panelJanji, saring: panelSaring, cocok: panelCocok, blast: panelBlast, dendalalu: formDendaLalu, tunggakan: panelTunggakan, tinjau: panelTinjau, daftarpk: panelDaftarPk }[p.j];
+    kelompok: formKelompok, geomanual: formGeoManual, info: formInfo, gantikel: formGantiKelompok, orang: panelOrang, formorang: formOrang, pilihorang: panelPilihOrang, antre: panelAntre, hubungi: panelHubungi, migrasi: panelMigrasi, janji: panelJanji, saring: panelSaring, cocok: panelCocok, blast: panelBlast, dendalalu: formDendaLalu, tunggakan: panelTunggakan, tinjau: panelTinjau,
+    namagrup: formNamaGrup, gabunggrup: panelGabungGrup, pindahpk: panelPindahPk, bentukgrup: panelBentukGrup, grupbubar: panelGrupBubar, kartu360: panelKartu360, daftarpk: panelDaftarPk }[p.j];
   var h = f(p);
   var kunci = S.panel.length + ':' + p.j + (p.v || ''), lama = lap.querySelector('.panel'), sama = lama && lama.getAttribute('data-k') === kunci;
   var y = sama ? lama.scrollTop : (p._y || 0), kembali = !sama && p._kembali;
@@ -12560,7 +13058,8 @@ function panelPk(p) {
       return '<button class="btn utama" style="width:100%;margin-top:8px;background:var(--hijau)" data-a="rinciangabungpk">Rincian gabungan ' + gb.pk.length + ' PK · Rp ' + ang(gb.total) + '</button>' +
         '<div class="kecil" style="margin-top:4px">Bersama ' + e(gb.teman.map(function (t) { return t.nama; }).join(', ')) + (gb.kontak ? ' · kontak ' + e(gb.kontak.nama) : '') + '</div>';
     })() +
-    (x.aksi ? '<div class="kecil" style="margin-top:10px">Saran: ' + e(x.aksi) + '</div>' : '') + '</div>';
+    (x.aksi ? '<div class="kecil" style="margin-top:10px">Saran: ' + e(x.aksi) + '</div>' : '') +
+    (boleh360() ? '<button class="btn tipis k360-tombol" style="width:100%;margin-top:10px" data-a="kartu360">◎ Kartu 360° · semua data PK ini</button>' : '') + '</div>';
   // kontak
   out += '<div class="kartu sec"><h3>Kontak</h3>' + ((x.kontak || []).length ? '' : '<div class="kecil">Belum ada kontak.</div>') + (x.kontak || []).map(function (k) {
     var wa = k.wa ? urlWa(k.wa, pesanUmum(k, x)) : '';
@@ -12759,7 +13258,7 @@ function panelGrup(p) {
     bawah: p.dasar === 'Manual' ? '<button class="btn utama" data-a="tambahpkmanual">' + IKON.tambah + ' Tambah PK</button>' : '' };
   if (p.dasar === 'Manual') return panelGrupManual(p, g);
   var pk = urutPkGrup(g.pk, p.dasar);
-  var out = '<div class="kartu"><div class="kecil">' + e(labelDari(DASAR, p.dasar)) + (adaSaring() ? ' · dengan saringan' : '') + '</div><div style="font-size:18px;font-weight:700">' + e(g.nama) + '</div><div class="kecil">' + g.pk.length + ' PK · ' + g.sudah + ' sudah ITB · ' +
+  var out = '<div class="kartu"><div class="kecil">' + e(g.aturan ? 'Grup otomatis · ' + g.aturan.jenis : labelDari(DASAR, p.dasar)) + (adaSaring() ? ' · dengan saringan' : '') + '</div><div style="font-size:18px;font-weight:700">' + e(g.judul || g.nama) + '</div><div class="kecil">' + g.pk.length + ' PK · ' + g.sudah + ' sudah ITB · ' +
     g.belum + ' belum · ' + g.telat + ' telat' + (g.tunggakan ? ' · ± ' + rp(g.tunggakan) : '') + '</div><div class="kecil">' + angkaTk(g.tk) + ' TK · iuran ' + rp(g.iuran) + '/bln</div>' + barGrup(g);
   var tagih = g.pk.filter(function (x) { return rincian(x); });
   if (tagih.length) out += '<button class="btn utama" style="width:100%;margin-top:12px" data-a="rinciangrup">Rincian tagihan ' + tagih.length + ' PK · Rp ' +
@@ -12777,10 +13276,11 @@ function panelGrup(p) {
     out += '<div class="baris-btn"><a class="btn" href="' + e(url) + '" target="_blank" rel="noopener">' + IKON.arah + ' Rute ' + t.length + ' PK belum ITB (Maps)</a></div>';
   }
   out += tombolBlast(g.pk, g.judul || g.nama);
+  if (g.aturan) out += tombolAksiGrup(p.v);
   if (p.dasar === 'Kelompok saya') out += '<div class="baris-btn"><button class="btn tipis" data-a="gantikel">' + IKON.pensil + ' Ganti nama</button><button class="btn tipis" data-a="tambahkekel">' + IKON.tambah + ' Tambah PK</button></div>';
   else out += '<div class="baris-btn"><button class="btn tipis" data-a="kelompokgrup">' + IKON.tambah + ' Jadikan kelompok (daftar kerja)</button></div>';
-  out += '</div><div class="daftar">' + pk.map(function (x) { return itemPkGrup(x, p.dasar); }).join('') + '</div>';
-  return { judul: g.nama, sub: labelDari(DASAR, p.dasar) + ' · ' + g.pk.length + ' PK', isi: out };
+  out += '</div><div class="daftar">' + pk.map(function (x) { return itemPkGrup(x, p.dasar, g.aturan ? p.v : ''); }).join('') + '</div>';
+  return { judul: g.judul || g.nama, sub: (g.aturan ? 'Grup otomatis' : labelDari(DASAR, p.dasar)) + ' · ' + g.pk.length + ' PK', isi: out };
 }
 
 /* Urutan PK di halaman grup: mengikuti pilihan urutan (TK, iuran, tunggakan, nama); selain itu yang perlu ditagih dulu. */
@@ -12796,13 +13296,14 @@ function urutPkGrup(pks, dasar) {
   });
 }
 /* Baris PK di halaman grup: seperti daftar Perusahaan, ditambah TK dan iuran agar ukuran PK terlihat. */
-function itemPkGrup(p, dasar) {
+function itemPkGrup(p, dasar, idPindah) {
   var s = st(p), kt = (p.kontak || [])[0];
   var info = [angkaTk(p.tk) + ' TK', p.iuran ? rp(p.iuran) + '/bln' : '', dasar === 'Skala' ? '' : kodeSkala(p) !== '-' ? kodeSkala(p) : '', dasar === 'Program' ? '' : kodeProgram(p),
     dasar === 'Ekosistem desa' || dasar === 'Kecamatan' ? p.desa : p.kecamatan].filter(Boolean).join(' · ');
   return '<div class="item" data-a="pk" data-v="' + e(p.npp) + '"><span class="strip" style="background:' + warnaStrip(s.k) + '"></span>' +
     '<div class="tengah"><div class="t1">' + e(p.nama) + '</div><div class="t2">' + e(info) + '</div><div class="t2">' + (kt ? e(kt.nama) + (kt.wa ? '' : ' · tanpa WA') : 'tanpa kontak') + '</div></div>' +
-    '<div class="kanan"><span class="pill s-' + s.k + '">' + e(s.l) + '</span>' + (p.tunggakan ? '<div class="rp">± ' + rp(p.tunggakan) + '</div>' : '') + '</div></div>';
+    '<div class="kanan"><span class="pill s-' + s.k + '">' + e(s.l) + '</span>' + (p.tunggakan ? '<div class="rp">± ' + rp(p.tunggakan) + '</div>' : '') + '</div>' +
+    (idPindah ? '<button class="lepas" data-a="pindahpk" data-v="' + e(p.npp + '|' + idPindah) + '" aria-label="Pindah ke grup lain" title="Pindah ke grup lain">⇄</button>' : '') + '</div>';
 }
 function panelJadwal(p) {
   var j = (S.data.jadwal || []).filter(function (x) { return x.id === p.v; })[0];
@@ -13022,15 +13523,309 @@ function panelGrupManual(p, g) {
     g.sudah + ' sudah ITB · ' + g.belum + ' belum · ' + g.telat + ' telat' + (g.tunggakan ? ' · ± ' + rp(g.tunggakan) : '') + '</div>' + barGrup(g);
   var tagih = g.pk.filter(function (x) { return rincian(x); });
   if (tagih.length) out += '<button class="btn utama" style="width:100%;margin-top:12px" data-a="rinciangrup">Rincian tagihan ' + tagih.length + ' PK</button>';
-  out += tombolBlast(g.pk, g.judul);
+  out += tombolBlast(g.pk, g.judul) + tombolAksiGrup('m:' + g.manual);
   out += '</div>' + (pk.length > 5 ? '<div class="kotak-cari kotak-grup">' + IKON.cari + '<input id="acari" type="search" placeholder="Saring anggota grup…" autocomplete="off"></div>' : '') +
     '<div class="daftar daftar-anggota">' + pk.map(function (x) {
       var s2 = st(x), kt = kontakUtama(x);
       return '<div class="item" data-a="pk" data-v="' + e(x.npp) + '"><span class="strip" style="background:' + warnaStrip(s2.k) + '"></span><div class="tengah"><div class="t1">' + e(x.nama) + '</div><div class="t2">' +
         e([x.desa || x.kecamatan, kt ? 'PIC ' + kt.nama : 'tanpa kontak'].filter(Boolean).join(' · ')) + '</div></div><div class="kanan"><span class="pill s-' + s2.k + '">' + e(s2.l) + '</span></div>' +
+        '<button class="lepas" data-a="pindahpk" data-v="' + e(x.npp + '|m:' + g.manual) + '" aria-label="Pindah ke grup lain" title="Pindah ke grup lain">⇄</button>' +
         '<button class="lepas" data-a="keluargrup" data-v="' + e(x.npp) + '" aria-label="Keluarkan dari grup">✕</button></div>';
-    }).join('') + '</div><p class="kecil" style="margin:8px 4px">Ketuk ✕ lalu <b>Keluarkan?</b> untuk mengeluarkan PK dari grup ini. Kontak PK tidak berubah.</p>';
+    }).join('') + '</div><p class="kecil" style="margin:8px 4px">Ketuk ⇄ untuk memindah PK ke grup lain. Ketuk ✕ lalu <b>Keluarkan?</b> untuk mengeluarkan PK dari grup ini. Kontak PK tidak berubah.</p>';
   return { judul: g.judul, sub: 'Grup manual · ' + g.pk.length + ' PK', isi: out, bawah: '<button class="btn utama" data-a="tambahpkmanual">' + IKON.tambah + ' Tambah PK</button>' };
+}
+/* ---------- 5C.1 (LENSA Suite, 22 Nov 2026): Kartu 360° per NPP — hanya perangkat Pemilik ----------
+   Data dihitung di perangkat (apiKartu360, tanpa sinyal) dari tab LENSA + RINGKAS_360 (ringkasan aplikasi lain, diperbarui Hub tiap pagi). */
+var BLN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+var K360_LABEL = { tepat: 'Tepat bulan', telat: 'Dibayar telat', lunas: 'Terbayar (tanggal tidak tercatat)', tunggak: 'Menunggak', berjalan: 'Bulan berjalan, belum bayar', 'belum-peserta': 'Belum terdaftar' };
+function boleh360() { return !!(window.__lensa2 && window.__lensa2.pemilik()) || !!window.__LENSA_UJI_PEMILIK; }
+function blnPendek(ym) { var m = String(ym || '').match(/^(\d{4})-(\d{2})/); return m ? BLN3[+m[2] - 1] : ''; }
+function tgl360(t) { var m = String(t || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (+m[3]) + ' ' + BLN3[+m[2] - 1] + ' ' + m[1].slice(2) : String(t || ''); }
+function labelNpp360(d, n) { if (d.terkait.length < 2) return ''; var t = d.terkait.filter(function (x) { return x.npp === n; })[0]; return '<div class="k360-label">' + e(n) + ' · ' + e(t ? t.nama : '') + '</div>'; }
+/** Satu blok ringkasan aplikasi lain di Kartu 360° (isi dari tab RINGKAS_360). */
+function blokApp360(app, m) {
+  var i = m.isi || {}, kls = { 'Monitor SPPG': 'monitor', 'MyTagihan Desa': 'myt', 'SIGAP Jakon': 'sigap' }[app] || 'lain';
+  var kepala = '<div class="k360-app"><div class="k360-app-judul"><span class="pill k360-sumber-' + kls + '">' + e(app) + '</span><span class="kecil">diperbarui ' + e(tgl360(m.diperbarui) + String(m.diperbarui || '').slice(10)) + '</span></div>';
+  if (app === 'Monitor SPPG') return kepala + '<div><b>' + e(i.nama || 'Dapur SPPG') + '</b></div>' + (i.yayasan ? '<div class="kecil">Yayasan ' + e(i.yayasan) + '</div>' : '') +
+    ([i.desa, i.kecamatan].filter(Boolean).length ? '<div class="kecil">' + e([i.desa, i.kecamatan].filter(Boolean).join(', ')) + '</div>' : '') +
+    (i.pic ? '<div class="kecil">PIC dapur (Monitor): ' + e(i.pic) + (i.picWa ? ' · <a href="' + e(urlWa(i.picWa)) + '" target="_blank" rel="noopener">WA</a>' : '') + '</div>' : '') +
+    (i.catatan ? '<div class="kecil">Catatan Monitor: ' + e(i.catatan) + '</div>' : '') + '</div>';
+  if (app === 'MyTagihan Desa') return kepala + '<div><b>' + e(i.kelompok || 'Kelompok') + '</b>' + (i.aktif === false ? ' <span class="pill s-telat2">NPP nonaktif</span>' : '') + '</div>' +
+    '<div class="kecil">' + e(['Desa ' + (i.desa || '–'), 'Kec. ' + (i.kecamatan || '–'), i.program].filter(Boolean).join(' · ')) + '</div>' +
+    '<div class="grid3" style="margin-top:6px"><div><b>' + angkaTk(i.peserta || 0) + '</b><span>peserta ditagih' + (i.bulan ? ' ' + e(blnPendek(i.bulan)) : '') + '</span></div><div><b>' + (i.iuran ? rp(i.iuran) : '–') +
+    '</b><span>iuran bulan ini</span></div><div><b>' + (i.saldoIjt ? rp(i.saldoIjt) : '–') + '</b><span>saldo IJT</span></div></div>' +
+    ((i.masuk || i.keluar) ? '<div class="kecil" style="margin-top:4px">Bulan ini: ' + (i.masuk || 0) + ' masuk · ' + (i.keluar || 0) + ' keluar</div>' : '') +
+    (i.belumLengkap ? '<div class="kecil" style="color:var(--merah)">' + i.belumLengkap + ' peserta belum bisa dihitung (data acuan belum lengkap)</div>' : '') +
+    (i.kodeBayar ? '<div class="kecil">Kode bayar ' + e(i.kodeBayar) + '</div>' : '') + '<div class="kecil">Angka saja; nama & NIK peserta tetap di MyTagihan.</div></div>';
+  if (app === 'SIGAP Jakon') return kepala + (i.cv || []).map(function (c) {
+    return '<div style="margin-top:4px"><b>' + e(c.nama) + '</b> <span class="pill ' + (/aktif/i.test(c.status) && !c.bulanTunggak ? 's-sudah' : /tunggak|nonaktif|belum/i.test(c.status) || c.bulanTunggak ? 's-telat2' : 's-belum') + '">' + e(c.status) + '</span></div>' +
+      (c.bulanTunggak ? '<div class="kecil">Tunggakan ' + c.bulanTunggak + ' bulan</div>' : '') +
+      '<div class="kecil">' + c.proyek + ' proyek tercatat · ' + c.proyekBaru + ' proyek tahun ini & lalu' + (c.nilaiBaru ? ' (Rp ' + angkaTk(c.nilaiBaru) + ')' : '') + (c.belumJakon ? ' · <b style="color:var(--merah)">' + c.belumJakon + ' belum didaftarkan Jakon</b>' : '') + '</div>' +
+      (c.daftarProyek || []).slice(0, 3).map(function (x) { return '<div class="kecil">• ' + e(x.tahun) + ' · ' + e(x.nama) + (x.nilai ? ' · Rp ' + angkaTk(x.nilai) : '') + (x.jakon ? ' · ' + e(x.jakon) : '') + '</div>'; }).join('') +
+      (c.pengajuan ? '<div class="kecil">Pengajuan terakhir: ' + e(c.pengajuan.jenis) + ' · ' + e(c.pengajuan.status) + ' · ' + e(c.pengajuan.tanggal) + '</div>' : '') +
+      (c.kantor ? '<div class="kecil">Lokasi kantor: ' + e(c.kantor.status) + ' · <a href="https://www.google.com/maps/search/?api=1&query=' + e(c.kantor.lat + ',' + c.kantor.lng) + '" target="_blank" rel="noopener">Google Maps ↗</a>' + (c.lokasiProyek ? ' · ' + c.lokasiProyek + ' lokasi proyek' : '') + '</div>' :
+        (c.lokasiProyek ? '<div class="kecil">' + c.lokasiProyek + ' lokasi proyek terekam</div>' : ''));
+  }).join('') + '</div>';
+  return kepala + '</div>';
+}
+function panelKartu360(p) {
+  if (!boleh360()) return { judul: 'Kartu 360°', isi: '<div class="kartu kosong">Kartu 360° hanya untuk perangkat pemilik.</div>' };
+  if (!p.data && !p.memuat && !p.galat) {
+    p.memuat = true;
+    panggil('apiKartu360', p.v).then(function (r) { p.data = r; p.memuat = false; if (S.panel[S.panel.length - 1] === p) renderPanel(); })
+      .catch(function (er) { p.galat = er.message; p.memuat = false; if (S.panel[S.panel.length - 1] === p) renderPanel(); });
+  }
+  if (!p.data) return { judul: 'Kartu 360°', sub: 'NPP ' + p.v, isi: '<div class="kartu kosong">' + (p.galat ? e(p.galat) : 'Menyusun Kartu 360°…') + '</div>' };
+  var d = p.data, out = '', jml = function (a, f) { return a.reduce(function (s, x) { return s + (Number(f(x)) || 0); }, 0); };
+  var tung = jml(d.iuran, function (x) { return x.tunggakan; }), iur = jml(d.iuran, function (x) { return x.iuran; }), tk = jml(d.tk, function (x) { return x.sekarang; });
+  var pkUtamaX = PK[d.npp] || {}, s0 = st(pkUtamaX);
+  // kepala + NPP terkait
+  out += '<div class="kartu kepala-pk"><div class="kecil">Kartu 360° · ' + d.terkait.length + ' NPP' + (d.terkait.length > 1 ? ' digabung' : '') + ' · disusun ' + e(tgl360(d.dibuat)) + '</div><h2>' + e(d.nama) + '</h2>' +
+    (pkUtamaX.status ? '<div style="margin-top:6px"><span class="pill s-' + s0.k + '">' + e(pkUtamaX.status) + '</span></div>' : '') +
+    '<div class="metrik"><div><b>' + (tung ? rp(tung) : '–') + '</b><span>Perk. tunggakan</span></div><div><b>' + (iur ? rp(iur) : '–') + '</b><span>Iuran/bulan</span></div><div><b>' + (tk || '–') +
+    '</b><span>TK aktif</span></div></div>' +
+    (d.terkait.length > 1 ? '<div class="k360-npp">' + d.terkait.map(function (t) {
+      return '<button class="chip" data-a="pk" data-v="' + e(t.npp) + '" title="' + e(t.alasan || 'NPP ini') + '">' + e(t.npp) + ' · ' + e(t.nama) + (t.alasan ? ' <i>· ' + e(t.alasan) + '</i>' : '') + '</button>';
+    }).join('') + '</div>' : '') + '</div>';
+  // iuran 12 bulan
+  out += '<div class="kartu sec"><h3>Iuran 12 bulan</h3>' + d.iuran.map(function (r) {
+    return labelNpp360(d, r.npp) + '<div class="k360-grid">' + r.sel.map(function (c) {
+      var t = blnPendek(c.b) + ' ' + c.b.slice(0, 4) + ': ' + K360_LABEL[c.s] + (c.tgl ? ' · dibayar ' + tgl360(c.tgl) : '') + (c.nilai ? ' · Rp ' + angkaTk(c.nilai) : '') + (c.denda ? ' · denda Rp ' + angkaTk(c.denda) : '');
+      return '<span class="k360-sel k-' + c.s + '" title="' + e(t) + '">' + blnPendek(c.b) + (c.lambat ? '<i>+' + c.lambat + '</i>' : '') + '</span>';
+    }).join('') + '</div><div class="kecil" style="margin:4px 0 8px">Tepat bulan ' + r.hit.tepat + ' · telat ' + r.hit.telat + ' · menunggak ' + r.hit.tunggak +
+      (r.posting ? ' · posting terakhir ' + e(blnPendek(r.posting) + ' ' + r.posting.slice(0, 4)) : '') + '</div>';
+  }).join('') + '<div class="k360-legenda">' + ['tepat', 'telat', 'lunas', 'tunggak', 'berjalan'].map(function (k) { return '<span><i class="k360-sel k-' + k + '"></i>' + e(K360_LABEL[k]) + '</span>'; }).join('') + '</div></div>';
+  // tenaga kerja
+  out += '<div class="kartu sec"><h3>Tenaga kerja</h3>' + d.tk.map(function (r) {
+    var maks = Math.max.apply(null, r.seri.map(function (x) { return x.tk || 0; }).concat([1])), ada = r.seri.some(function (x) { return x.tk !== undefined; });
+    return labelNpp360(d, r.npp) + (ada ? '<div class="k360-bar">' + r.seri.map(function (x) {
+      return '<div title="' + e(blnPendek(x.b) + ' ' + x.b.slice(0, 4) + (x.tk !== undefined ? ': ' + x.tk + ' TK' + (x.tambah ? ', +' + x.tambah : '') + (x.kurang ? ', −' + x.kurang : '') : ': tidak ada laporan')) + '">' +
+        '<b style="height:' + (x.tk !== undefined ? Math.max(4, Math.round(x.tk / maks * 100)) : 0) + '%"></b><span>' + (x.tk !== undefined ? x.tk : '') + '</span><i>' + blnPendek(x.b) + '</i></div>';
+    }).join('') + '</div>' : '<div class="kecil">Belum ada laporan Monitoring.</div>') + '<div class="kecil" style="margin:2px 0 8px">TK aktif sekarang ' + (r.sekarang || 0) + (r.program ? ' · program ' + e(r.program) : '') + '</div>';
+  }).join('') + '</div>';
+  // rapor & migrasi
+  if (d.rapor.length || d.migrasi.length) {
+    out += '<div class="kartu sec"><h3>Rapor &amp; kolektibilitas</h3>' + d.rapor.map(function (r) {
+      return labelNpp360(d, r.npp) + '<div class="baris-rapor"><span class="pill k360-rapor-' + e(String(r.warna).toLowerCase()) + '">Skor ' + e(r.skor) + ' · ' + e(r.warna) + '</span>' +
+        (r.upah ? ' <span class="kecil">upah rata-rata Rp ' + angkaTk(r.upah) + '/TK</span>' : '') + '</div><div class="kecil">' + e(r.alasan) + '</div>' +
+        (r.peluang ? '<div class="kecil">Peluang: ' + e(r.peluang) + '</div>' : '') + (r.flags ? '<div class="kecil">Catatan: ' + e(r.flags) + '</div>' : '');
+    }).join('') + (d.migrasi.length ? '<div class="kecil" style="margin-top:8px"><b>Migrasi kelas</b></div>' + d.migrasi.map(function (m) {
+      return '<div class="kecil">' + e(blnPendek(m.bulan) + ' ' + m.bulan.slice(0, 4)) + (d.terkait.length > 1 ? ' · ' + e(m.npp) : '') + ': ' + e(m.dari || '–') + ' → ' + e(m.ke || '–') + (m.migrasi ? ' (' + e(m.migrasi) + ')' : '') + '</div>';
+    }).join('') : '') + '</div>';
+  }
+  // kontak gabungan
+  var kon = [], sudah = {};
+  d.terkait.forEach(function (t) { var x = PK[t.npp]; (x && x.kontak || []).forEach(function (k) { if (!sudah[k.id]) { sudah[k.id] = 1; kon.push({ k: k, x: x }); } }); });
+  out += '<div class="kartu sec"><h3>Kontak</h3>' + (kon.length ? kon.map(function (o) {
+    var k = o.k, wa = k.wa ? urlWa(k.wa, pesanUmum(k, o.x)) : '';
+    return '<div class="kontak-baris"><div class="tengah ketuk" data-a="orang" data-v="' + e(k.id) + '"><div style="font-weight:600">' + e(k.nama) + '</div><div class="kecil">' + e([k.jabatan || k.peran, k.hp, d.terkait.length > 1 ? o.x.nama : ''].filter(Boolean).join(' · ')) + '</div></div>' +
+      (wa ? '<a class="bulat wa" href="' + e(wa) + '" target="_blank" rel="noopener" aria-label="WA">' + IKON.wa + '</a>' : '') + (k.hp ? '<a class="bulat tel" href="' + e(urlTel(k.hp)) + '" aria-label="Telepon">' + IKON.tel + '</a>' : '') + '</div>';
+  }).join('') : '<div class="kecil">Belum ada kontak.</div>') + '</div>';
+  // aplikasi lain (ringkasan harian)
+  var lain = d.lain || {}, urutApp = ['Monitor SPPG', 'MyTagihan Desa', 'SIGAP Jakon'].filter(function (a) { return lain[a]; });
+  out += '<div class="kartu sec"><h3>Aplikasi lain</h3>' + (urutApp.length ? urutApp.map(function (a) { return blokApp360(a, lain[a]); }).join('') :
+    '<div class="kecil">NPP ini tidak ada di aplikasi lain, atau ringkasannya belum diambil.</div>') +
+    '<div class="kecil" style="margin-top:8px">Diambil otomatis tiap pagi dari Monitor SPPG, MyTagihan Desa, dan SIGAP Jakon.</div><button class="btn tipis" style="width:100%;margin-top:6px" data-a="perbarui360">Perbarui sekarang (perlu sinyal)</button></div>';
+  // riwayat hubungi & agenda
+  var rw = p.semua ? d.riwayat : d.riwayat.slice(0, 25);
+  out += '<div class="kartu sec"><h3>Riwayat hubungi &amp; agenda</h3>' + (rw.length ? '<div class="k360-riwayat">' + rw.map(function (r) {
+    var sb = /monitor/i.test(r.sumber) ? 'monitor' : /lensa/i.test(r.sumber) ? 'lensa' : 'lain';
+    return '<div class="k360-r' + (r.agenda ? ' agenda' : '') + '"><div class="k360-r-tgl">' + e(tgl360(r.tanggal)) + (r.jam ? '<br>' + e(r.jam) : '') + '</div><div class="tengah"><div><span class="pill k360-sumber-' + sb + '">' + e(r.sumber) + '</span> <b>' + e(r.jenis) + '</b>' +
+      (d.terkait.length > 1 ? ' <span class="kecil">· ' + e(r.npp) + '</span>' : '') + '</div><div>' + e(r.ringkasan) + '</div>' +
+      (function () { var ket = [r.status, r.komitmen, r.tl ? 'tindak lanjut ' + tgl360(r.tl) : ''].filter(function (v, i, a) { return v && a.indexOf(v) === i; }); return ket.length ? '<div class="kecil">' + e(ket.join(' · ')) + '</div>' : ''; })() + '</div></div>';
+  }).join('') + '</div>' + (!p.semua && d.riwayat.length > 25 ? '<button class="btn tipis" style="width:100%;margin-top:8px" data-a="k360semua">Tampilkan semua (' + d.riwayat.length + ')</button>' : '') +
+    (d.jumlahRiwayat > d.riwayat.length ? '<div class="kecil" style="margin-top:6px">' + d.riwayat.length + ' terbaru dari ' + d.jumlahRiwayat + ' catatan.</div>' : '') : '<div class="kecil">Belum ada catatan hubungi atau agenda.</div>') + '</div>';
+  return { judul: 'Kartu 360°', sub: d.terkait.map(function (t) { return t.npp; }).join(' · '), isi: out };
+}
+/* ---------- 5B (LENSA Suite, 21 Nov 2026): grup lebih fungsional ----------
+   Bentuk grup cepat (kata kunci, yayasan, telp/email kantor, PIC sama dari semua kontak), ganti nama, gabung, pindah PK, bubarkan.
+   Semua perubahan grup manual lewat apiAturGrup (kolom grup_manual); grup otomatis dibubarkan lewat apiGrupBubar (tidak muncul lagi). */
+function bubarSet() { var o = {}; ((S.data && S.data.grupBubar) || []).forEach(function (x) { if (x && x.id) o[x.id] = x; }); return o; }
+function idGrup(x) { return x.orang ? 'o:' + x.orang.id : x.manual ? 'm:' + x.manual : x.nama; }
+function semuaGrupPengurus() { return grupOrang(false); }
+function grupDariId(id) {
+  if (/^m:/.test(id)) return grupManual().filter(function (x) { return 'm:' + x.manual === id; })[0] || null;
+  return grupOrang(true).filter(function (x) { return idGrup(x) === id; })[0] || null;
+}
+function namaPolosGrup(x) { return x.manual || (x.aturan ? x.aturan.nama : x.utama ? x.utama.nama : String(x.judul || '').replace(/^Grup /, '')); }
+function tombolAksiGrup(id) {
+  return '<div class="baris-btn"><button class="btn tipis" data-a="grupnama" data-v="' + e(id) + '">' + IKON.pensil + ' Ganti nama</button>' +
+    '<button class="btn tipis" data-a="grupgabung" data-v="' + e(id) + '">' + IKON.grup + ' Gabung dengan…</button>' +
+    '<button class="btn bahaya" data-a="grupbubar" data-v="' + e(id) + '">Bubarkan grup</button></div>';
+}
+/** Simpan grup manual banyak PK sekaligus, lalu perbarui data di HP. */
+function aturGrupLokal(daftar, pesan, btn, setelah) {
+  if (!daftar.length) { toast('Tidak ada PK yang dipilih', true); return Promise.resolve(); }
+  sibuk(btn, true);
+  return panggil('apiAturGrup', daftar).then(function (r) {
+    var tidak = (r && r.tidakAda) || [];
+    daftar.forEach(function (x) { if (PK[x.npp] && tidak.indexOf(x.npp) < 0) PK[x.npp].grupManual = x.grup; });
+    indeks(); simpanCache();
+    if (setelah) setelah();
+    toast(pesan + (tidak.length ? ' · ' + tidak.length + ' PK belum ada di tab PERUSAHAAN, dilewati' : ''));
+  }).catch(function (er) { sibuk(btn, false); toast(er.message, true); });
+}
+function keGrupPengurus() { tutup(true); S.layar = 'grup'; S.dasar = 'Pengurus'; simpanPilihanGrup(); render(); }
+function baruGrupDari(pks, nama) { return pks.map(function (x) { return { npp: x.npp, grup: nama }; }); }
+
+function formNamaGrup(p) {
+  var g = grupDariId(p.v), nm = g ? namaPolosGrup(g) : '';
+  return { judul: 'Ganti nama grup', sub: g ? g.judul : p.v, isi: '<div class="kartu"><label class="f" for="gnama" style="margin-top:0">Nama grup</label><input class="inp" id="gnama" value="' + e(p.nama !== undefined ? p.nama : nm) + '">' +
+    (/^m:/.test(p.v) ? '' : '<p class="kecil">Grup otomatis ini akan menjadi <b>grup manual</b> dengan nama baru; anggotanya tetap ' + (g ? g.pk.length : 0) + ' PK.</p>') + '</div>',
+    bawah: '<button class="btn" data-a="tutup">Batal</button><button class="btn utama" data-a="simpannamagrup">Simpan</button>' };
+}
+/** Daftar grup tujuan (gabung / pindah): grup per orang, grup otomatis, grup manual. */
+function daftarTujuanGrup(p, kecuali, aksi) {
+  var q = norm(p.q || '').split(' ').filter(Boolean);
+  var gs = semuaGrupPengurus().filter(function (x) { return idGrup(x) !== kecuali; }).filter(function (x) {
+    if (!q.length) return true;
+    var t = norm([x.judul, x.orang ? x.orang.nama : '', x.manual || ''].concat(x.pk.map(function (y) { return y.nama; })).join(' '));
+    return q.every(function (w) { return t.indexOf(w) >= 0; });
+  });
+  return gs.slice(0, 60).map(function (x) {
+    return '<div class="item" data-a="' + aksi + '" data-v="' + e(idGrup(x)) + '"><div class="tengah"><div class="t1">' + e(x.judul) + '</div><div class="t2">' +
+      e((x.manual ? 'Grup manual' : x.aturan ? 'Otomatis · ' + x.aturan.jenis : 'Per orang · ' + x.orang.nama) + ' · ' + x.pk.length + ' PK') + '</div></div></div>';
+  }).join('') + (gs.length > 60 ? '<div class="kecil" style="margin:8px 4px">' + (gs.length - 60) + ' grup lain; persempit dengan pencarian.</div>' : '') || '<div class="kartu kosong">Tidak ada grup yang cocok.</div>';
+}
+function isiPanelGrup5b() {
+  var p = S.panel[S.panel.length - 1], el = document.getElementById('isi5b');
+  if (!p || !el) return;
+  if (p.j === 'gabunggrup') el.innerHTML = daftarTujuanGrup(p, p.v, 'pilihgabung');
+  else if (p.j === 'pindahpk') el.innerHTML = daftarTujuanGrup(p, p.dari, 'pilihpindah');
+  else if (p.j === 'bentukgrup') el.innerHTML = isiBentukGrup(p);
+}
+function panelGabungGrup(p) {
+  var g = grupDariId(p.v);
+  if (!g) return { judul: 'Gabung grup', isi: '<div class="kartu kosong">Grup tidak ditemukan.</div>' };
+  if (p.tujuan) {
+    var t = grupDariId(p.tujuan), semua = g.pk.concat(t ? t.pk.filter(function (x) { return g.pk.indexOf(x) < 0; }) : []);
+    return { judul: 'Gabung grup', sub: g.judul + ' + ' + (t ? t.judul : ''), isi: '<div class="kartu"><div><b>' + e(g.judul) + '</b> (' + g.pk.length + ' PK) + <b>' + e(t ? t.judul : '') + '</b> (' + (t ? t.pk.length : 0) + ' PK)</div>' +
+      '<div class="kecil" style="margin-top:4px">Hasil: satu grup manual berisi ' + semua.length + ' PK.</div>' +
+      '<label class="f" for="gnama">Nama grup gabungan</label><input class="inp" id="gnama" value="' + e(t ? namaPolosGrup(t) : '') + '"></div>',
+      bawah: '<button class="btn" data-a="batalgabung">Pilih grup lain</button><button class="btn utama" data-a="simpangabung">Gabungkan</button>' };
+  }
+  return { judul: 'Gabung dengan…', sub: g.judul + ' · ' + g.pk.length + ' PK', isi: '<p class="kecil" style="margin:0 4px 10px">Pilih grup tujuan. Semua PK kedua grup menjadi satu grup manual.</p>' +
+    '<div class="kotak-cari kotak-grup">' + IKON.cari + '<input id="gpcari" type="search" placeholder="Cari grup, PIC, atau PK…" autocomplete="off" value="' + e(p.q || '') + '"></div>' +
+    '<div class="daftar" id="isi5b">' + daftarTujuanGrup(p, p.v, 'pilihgabung') + '</div>' };
+}
+function panelPindahPk(p) {
+  var x = PK[p.v];
+  if (!x) return { judul: 'Pindah PK', isi: '<div class="kartu kosong">PK tidak ditemukan.</div>' };
+  return { judul: 'Pindah ke grup…', sub: x.nama, isi: '<div class="kartu"><label class="f" for="gbaru" style="margin-top:0">Grup manual baru</label><div class="baris-btn" style="margin-top:0"><input class="inp" id="gbaru" placeholder="Nama grup baru" style="flex:1">' +
+    '<button class="btn utama" data-a="pindahbaru">Buat &amp; pindah</button></div></div><div class="kecil" style="margin:4px 4px 8px">Atau pilih grup yang ada (grup otomatis tujuan ikut menjadi grup manual):</div>' +
+    '<div class="kotak-cari kotak-grup">' + IKON.cari + '<input id="gpcari" type="search" placeholder="Cari grup, PIC, atau PK…" autocomplete="off" value="' + e(p.q || '') + '"></div>' +
+    '<div class="daftar" id="isi5b">' + daftarTujuanGrup(p, p.dari, 'pilihpindah') + '</div>' };
+}
+function panelGrupBubar() {
+  var a = ((S.data && S.data.grupBubar) || []).slice().reverse();
+  var isi = a.length ? '<div class="daftar">' + a.map(function (x) {
+    return '<div class="item"><div class="tengah"><div class="t1">' + e(x.nama || x.id) + '</div><div class="t2">' + e((/^o:/.test(x.id) ? 'Per orang' : 'Otomatis') + (x.t ? ' · dibubarkan ' + x.t : '')) + '</div></div>' +
+      '<button class="btn tipis" data-a="grupkembali" data-v="' + e(x.id) + '">Kembalikan</button></div>';
+  }).join('') + '</div>' : '<div class="kartu kosong">Belum ada grup otomatis yang dibubarkan.</div>';
+  return { judul: 'Grup yang dibubarkan', sub: a.length + ' grup', isi: '<p class="kecil" style="margin:0 4px 10px">Grup otomatis di sini tidak muncul lagi di tab Grup, juga bila orangnya kelak memegang PK tambahan. Kontak dan PK tidak berubah.</p>' + isi };
+}
+
+/* Bentuk grup cepat: calon grup (minimal 2 PK) menurut dasar yang dipilih → dicentang → menjadi grup manual. */
+var DASAR_BENTUK = [['kata', 'Kata kunci'], ['yayasan', 'Yayasan'], ['kantor', 'Telp / email kantor'], ['pic', 'PIC sama']];
+function hurufBesar(s) { return ' ' + String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() + ' '; }
+function nomorBaku(v) { var d = String(v || '').replace(/\D/g, ''); if (/^62/.test(d)) d = '0' + d.slice(2); return d.length >= 8 ? d : ''; }
+/** SPPG & lembaga desa punya aturan grup sendiri: tidak ikut calon dari telp/email kantor dan PIC sama (SPPG tidak pernah digabung dengan desa). */
+function pkAturanKhusus(p) { var a = window.KitGrup.aturan(p); return !!(a && (a.tanpa ? a.alasan === 'RT/RW' : a.jenis !== '')); }
+/** Gabungkan PK yang berbagi kunci (union-find). kunci(p) → [[kunci, alasan], …]. */
+function klaster(pks, kunci) {
+  var induk = {}, alasan = {}, pemilik = {};
+  var akar = function (n) { while (induk[n] !== n) { induk[n] = induk[induk[n]]; n = induk[n]; } return n; };
+  pks.forEach(function (p) {
+    induk[p.npp] = induk[p.npp] || p.npp;
+    kunci(p).forEach(function (k) {
+      if (!k[0]) return;
+      if (pemilik[k[0]] === undefined) { pemilik[k[0]] = p.npp; return; }
+      if (pemilik[k[0]] === p.npp) return; // kunci yang sama di PK yang sama (mis. nomor WA = nomor HP)
+      var a = akar(pemilik[k[0]]), b = akar(p.npp);
+      if (a !== b) induk[b] = a;
+      var r = akar(p.npp); (alasan[r] = alasan[r] || {})[k[1]] = 1;
+    });
+  });
+  var g = {};
+  pks.forEach(function (p) { var r = akar(p.npp); (g[r] = g[r] || []).push(p); });
+  var hasil = [];
+  Object.keys(g).forEach(function (r) {
+    if (g[r].length < 2) return;
+    var al = {};
+    g[r].forEach(function (p) { var ar = alasan[p.npp]; if (ar) Object.keys(ar).forEach(function (k) { al[k] = 1; }); });
+    Object.keys(alasan[r] || {}).forEach(function (k) { al[k] = 1; });
+    hasil.push({ pk: g[r], alasan: Object.keys(al) });
+  });
+  return hasil;
+}
+function calonGrup(p) {
+  var pk = S.data.pk, c = [];
+  if (p.dasar === 'kata') {
+    var q = norm(p.q || '').split(' ').filter(Boolean);
+    if (!q.length || q.join('').length < 3) return [];
+    var cocok = pk.filter(function (x) { var t = norm([x.nama, x.namaResmi, x.namaLapangan].join(' ')); return q.every(function (w) { return (' ' + t + ' ').indexOf(w) >= 0; }); });
+    if (cocok.length >= 2) c.push({ kunci: 'k:' + q.join(' '), nama: window.KitGrup.judul(p.q), alasan: 'nama memuat "' + p.q.trim() + '"', pk: cocok });
+  } else if (p.dasar === 'yayasan') {
+    var per = {};
+    pk.forEach(function (x) {
+      var m = hurufBesar([x.namaResmi || x.nama, x.namaLapangan].join(' ')).match(/ (?:YAYASAN|YYS) ([A-Z0-9 ]+?)(?= (?:DESA|DS|KEC|KECAMATAN|PAMEKASAN|KAB|KABUPATEN|SPPG) | $)/);
+      if (!m || !m[1].trim()) return;
+      var k = m[1].trim(); (per[k] = per[k] || []).push(x);
+    });
+    Object.keys(per).forEach(function (k) { if (per[k].length >= 2) c.push({ kunci: 'y:' + norm(k), nama: 'Yayasan ' + window.KitGrup.judul(k), alasan: 'nama yayasan sama', pk: per[k] }); });
+  } else if (p.dasar === 'kantor') {
+    klaster(pk.filter(function (x) { return !pkAturanKhusus(x); }), function (x) {
+      return [['t:' + nomorBaku(x.telp), 'telp kantor sama'], [/@/.test(x.email || '') ? 'e:' + String(x.email).trim().toLowerCase() : '', 'email kantor sama']].filter(function (k) { return k[0].length > 2; });
+    }).forEach(function (k) { c.push({ kunci: 'o:' + k.pk.map(function (x) { return x.npp; }).sort().join(','), nama: pkUtama(k.pk).nama, alasan: k.alasan.join(', '), pk: k.pk }); });
+  } else if (p.dasar === 'pic') {
+    var sudahOtomatis = function (pks) { // semua PK sudah memegang satu kontak yang sama = sudah grup otomatis per orang
+      var id = (pks[0].kontak || []).map(function (k) { return k.id; });
+      return id.some(function (i) { return pks.every(function (x) { return (x.kontak || []).some(function (k) { return k.id === i; }); }); });
+    };
+    klaster(pk.filter(function (x) { return !pkAturanKhusus(x) && (x.kontak || []).length; }), function (x) {
+      var k = [];
+      (x.kontak || []).forEach(function (o) {
+        [o.wa, o.hp].forEach(function (h) { var n = nomorBaku(h); if (n) k.push(['h:' + n, 'nomor PIC sama']); });
+        var nm = norm(o.nama); if (nm.split(' ').length >= 2) k.push(['n:' + nm, 'nama PIC sama']);
+      });
+      return k;
+    }).forEach(function (k) {
+      if (sudahOtomatis(k.pk)) return;
+      var hit = {}; k.pk.forEach(function (x) { (x.kontak || []).forEach(function (o) { hit[o.nama] = (hit[o.nama] || 0) + 1; }); });
+      var nama = Object.keys(hit).sort(function (a, b) { return hit[b] - hit[a]; })[0] || pkUtama(k.pk).nama;
+      c.push({ kunci: 'p:' + k.pk.map(function (x) { return x.npp; }).sort().join(','), nama: nama, alasan: k.alasan.indexOf('nomor PIC sama') < 0 ? 'nama PIC sama (nomor beda) — periksa dulu' : k.alasan.join(', '), pk: k.pk });
+    });
+  }
+  return c.sort(function (a, b) { return b.pk.length - a.pk.length; });
+}
+function pilihanCalon(p, x) {
+  var s = p.pilih[x.kunci];
+  if (!s) { s = p.pilih[x.kunci] = { on: false, nama: x.nama, kecuali: {} }; x.pk.forEach(function (y) { if (y.grupManual) s.kecuali[y.npp] = 1; }); }
+  return s;
+}
+function isiBentukGrup(p) {
+  var cs = calonGrup(p);
+  p.calon = cs;
+  if (!cs.length) return '<div class="kartu kosong">' + (p.dasar === 'kata' ? (norm(p.q || '').length < 3 ? 'Ketik kata kunci, mis. BUMDES, KOPERASI, PONDOK.' : 'Tidak ada 2 PK atau lebih yang namanya memuat kata itu.') : 'Tidak ada calon grup dengan dasar ini.') + '</div>';
+  return cs.slice(0, 40).map(function (x) {
+    var s = pilihanCalon(p, x), n = x.pk.filter(function (y) { return !s.kecuali[y.npp]; }).length;
+    return '<div class="kartu calon-grup' + (s.on ? ' on' : '') + '"><div class="baris-calon"><button class="cek-kotak' + (s.on ? ' on' : '') + '" data-a="bgcalon" data-v="' + e(x.kunci) + '" aria-pressed="' + s.on + '" aria-label="Buat grup ini">' + (s.on ? '✓' : '') + '</button>' +
+      '<input class="inp bg-nama" data-k="' + e(x.kunci) + '" value="' + e(s.nama) + '" aria-label="Nama grup"></div><div class="kecil" style="margin:4px 0 6px">' + e(x.alasan) + ' · ' + n + ' dari ' + x.pk.length + ' PK dipilih</div>' +
+      x.pk.map(function (y) {
+        var on = !s.kecuali[y.npp];
+        return '<div class="baris-calon pk"><button class="cek-kotak kecil' + (on ? ' on' : '') + '" data-a="bgpk" data-v="' + e(x.kunci + '|' + y.npp) + '" aria-pressed="' + on + '">' + (on ? '✓' : '') + '</button><span>' + e(y.nama) +
+          (y.grupManual ? ' <i class="kecil">· sudah di grup ' + e(y.grupManual) + '</i>' : '') + '</span></div>';
+      }).join('') + '</div>';
+  }).join('') + (cs.length > 40 ? '<div class="kecil" style="margin:8px 4px">' + (cs.length - 40) + ' calon lain tidak ditampilkan.</div>' : '');
+}
+function panelBentukGrup(p) {
+  p.dasar = p.dasar || 'kata'; p.pilih = p.pilih || {};
+  var isi = '<p class="kecil" style="margin:0 4px 8px">LENSA mengusulkan calon grup (minimal 2 PK). Centang yang ingin dibuat, nama bisa diubah, lalu ketuk <b>Buat grup</b>. Hasilnya grup manual. PK yang sudah di grup manual lain tidak dicentang dulu.</p>' +
+    '<div class="chips" style="margin-bottom:8px">' + DASAR_BENTUK.map(function (d) { return '<button class="chip' + (p.dasar === d[0] ? ' on' : '') + '" data-a="bgdasar" data-v="' + d[0] + '">' + e(d[1]) + '</button>'; }).join('') + '</div>' +
+    (p.dasar === 'kata' ? '<div class="kotak-cari kotak-grup">' + IKON.cari + '<input id="bgcari" type="search" placeholder="Kata kunci di nama PK, mis. BUMDES" autocomplete="off" value="' + e(p.q || '') + '"></div>' : '') +
+    (p.dasar === 'kantor' || p.dasar === 'pic' ? '<p class="kecil" style="margin:0 4px 8px">' + (p.dasar === 'pic' ? 'Diperiksa dari semua kontak tiap PK: nomor HP/WA sama, atau nama lengkap sama. ' : '') + 'PK SPPG dan lembaga desa tidak ikut (punya aturan grup sendiri).</p>' : '') +
+    '<div id="isi5b">' + isiBentukGrup(p) + '</div>';
+  return { judul: 'Bentuk grup cepat', sub: labelDari(DASAR_BENTUK, p.dasar), isi: isi, bawah: '<button class="btn" data-a="tutup">Tutup</button><button class="btn utama" data-a="bgbuat">Buat grup</button>' };
 }
 function saringAnggota(q) {
   var t = norm(q).split(' ').filter(Boolean);
@@ -13062,6 +13857,8 @@ function panelOrang(p) {
     '<div class="baris-btn" style="margin-top:10px">' + (wa ? '<a class="btn wa" href="' + e(wa) + '" target="_blank" rel="noopener">' + IKON.wa + ' Sapa</a>' : '') +
     (o.hp ? '<a class="btn" href="' + e(urlTel(o.hp)) + '">' + IKON.tel + ' Telepon</a>' : '') +
     (nRinci ? '<button class="btn tipis" data-a="rincianorang">Rincian ' + nRinci + ' PK</button>' : '') + '</div></div>';
+  var go = grupOrang(false).filter(function (x) { return x.orang && x.orang.id === p.v; })[0];
+  if (go) out += '<div class="kartu"><div class="kecil">Grup otomatis per orang · ' + go.pk.length + ' PK' + (go.pk.length < pks.length ? ' (PK desa, instansi, SPPG, atau yang sudah di grup manual tidak ikut)' : '') + '</div>' + tombolAksiGrup('o:' + p.v) + '</div>';
   if (p.berubah) out += '<div class="info-hitung"><span style="flex:1">Susunan PK berubah. Daftar Hari ini, pesan WA gabungan, dan tab Grup ikut berubah setelah hitung ulang.</span><button class="btn" data-a="hitung">Hitung ulang</button></div>';
   out += '<div class="judul-bagian"><h2>' + (pks.length > 1 ? 'Grup ' + e(pkUtama(pks).nama) : 'PK yang dipegang') + '</h2><span class="ket">' + pks.length + ' PK</span></div>';
   if (pks.length > 5) out += '<div class="kotak-cari kotak-grup">' + IKON.cari + '<input id="acari" type="search" placeholder="Saring anggota grup…" autocomplete="off"></div>';
@@ -13273,6 +14070,7 @@ var AKSI = {
     var t = String(v).slice(0, 2), r = String(v).slice(2);
     if (t === 'o:') return buka({ j: 'orang', v: r });
     if (t === 'm:') return buka({ j: 'grup', dasar: 'Manual', v: 'm:' + r });
+    if (t === 'a:') return buka({ j: 'grup', dasar: 'Pengurus', v: v }); // 5B: grup otomatis menurut aturan
     buka({ j: 'grup', dasar: S.dasar, v: r });
   },
   salinkode: function (v) {
@@ -13786,6 +14584,92 @@ var AKSI = {
       .catch(function (er) { sibuk(btn, false); toast(er.message, true); });
   }
 };
+/* ---------- 5C.1: Kartu 360° ---------- */
+AKSI.kartu360 = function () { var p = S.panel[S.panel.length - 1]; if (p && PK[p.v]) buka({ j: 'kartu360', v: p.v }); };
+AKSI.k360semua = function () { var p = S.panel[S.panel.length - 1]; p.semua = true; renderPanel(); };
+AKSI.perbarui360 = function (v, btn) {
+  sibuk(btn, true);
+  panggil('apiPerbarui360').then(function (r) {
+    var p = S.panel[S.panel.length - 1];
+    if (p && p.j === 'kartu360') { p.data = null; p.memuat = false; p.galat = ''; renderPanel(); }
+    toast('Data aplikasi lain diperbarui' + (r && r.waktu ? ' (' + r.waktu + ')' : ''));
+  }).catch(function (er) { sibuk(btn, false); toast(er.message, true); });
+};
+/* ---------- 5B: tindakan grup ---------- */
+AKSI.bentukgrup = function () { buka({ j: 'bentukgrup', dasar: 'kata', q: '', pilih: {} }); };
+AKSI.lihatbubar = function () { buka({ j: 'grupbubar' }); };
+AKSI.bgdasar = function (v) { var p = S.panel[S.panel.length - 1]; p.dasar = v; p.q = p.q || ''; renderPanel(); };
+AKSI.bgcalon = function (v) { var p = S.panel[S.panel.length - 1], s = p.pilih[v]; if (s) { s.on = !s.on; isiPanelGrup5b(); } };
+AKSI.bgpk = function (v) {
+  var p = S.panel[S.panel.length - 1], i = v.lastIndexOf('|'), s = p.pilih[v.slice(0, i)], n = v.slice(i + 1);
+  if (!s) return;
+  if (s.kecuali[n]) delete s.kecuali[n]; else s.kecuali[n] = 1;
+  isiPanelGrup5b();
+};
+AKSI.bgbuat = function (v, btn) {
+  var p = S.panel[S.panel.length - 1], daftar = [], ng = 0;
+  (p.calon || []).forEach(function (x) {
+    var s = p.pilih[x.kunci];
+    if (!s || !s.on) return;
+    var nama = String(s.nama || x.nama).replace(/\s+/g, ' ').trim(), pks = x.pk.filter(function (y) { return !s.kecuali[y.npp]; });
+    if (!nama || pks.length < 1) return;
+    ng++; daftar = daftar.concat(baruGrupDari(pks, nama));
+  });
+  if (!ng) return toast('Centang dulu calon grup yang ingin dibuat', true);
+  aturGrupLokal(daftar, ng + ' grup dibuat (' + daftar.length + ' PK)', btn, keGrupPengurus);
+};
+AKSI.grupnama = function (v) { if (!grupDariId(v)) return toast('Grup tidak ditemukan', true); buka({ j: 'namagrup', v: v }); };
+AKSI.simpannamagrup = function (v, btn) {
+  var p = S.panel[S.panel.length - 1], g = grupDariId(p.v), baru = nilai('gnama').replace(/\s+/g, ' ');
+  if (!g) return toast('Grup tidak ditemukan', true);
+  if (!baru) return toast('Nama grup kosong. Untuk membubarkan, pakai tombol Bubarkan grup.', true);
+  aturGrupLokal(baruGrupDari(g.pk, baru), 'Nama grup: ' + baru, btn, keGrupPengurus);
+};
+AKSI.grupgabung = function (v) { buka({ j: 'gabunggrup', v: v, q: '' }); };
+AKSI.pilihgabung = function (v) { var p = S.panel[S.panel.length - 1]; p.tujuan = v; renderPanel(); };
+AKSI.batalgabung = function () { var p = S.panel[S.panel.length - 1]; delete p.tujuan; renderPanel(); };
+AKSI.simpangabung = function (v, btn) {
+  var p = S.panel[S.panel.length - 1], g = grupDariId(p.v), t = grupDariId(p.tujuan), nama = nilai('gnama').replace(/\s+/g, ' ');
+  if (!g || !t) return toast('Grup tidak ditemukan', true);
+  if (!nama) return toast('Nama grup gabungan kosong', true);
+  var semua = g.pk.concat(t.pk.filter(function (x) { return g.pk.indexOf(x) < 0; }));
+  aturGrupLokal(baruGrupDari(semua, nama), 'Grup digabung: ' + nama + ' (' + semua.length + ' PK)', btn, keGrupPengurus);
+};
+AKSI.pindahpk = function (v) { var i = v.indexOf('|'); buka({ j: 'pindahpk', v: v.slice(0, i), dari: v.slice(i + 1), q: '' }); };
+AKSI.pindahbaru = function (v, btn) {
+  var p = S.panel[S.panel.length - 1], nama = nilai('gbaru').replace(/\s+/g, ' ');
+  if (!nama) return toast('Isi nama grup baru', true);
+  aturGrupLokal([{ npp: p.v, grup: nama }], (PK[p.v] ? PK[p.v].nama : 'PK') + ' dipindah ke grup ' + nama, btn, function () { tutup(); });
+};
+AKSI.pilihpindah = function (v, btn) {
+  var p = S.panel[S.panel.length - 1], t = grupDariId(v), x = PK[p.v];
+  if (!t || !x) return toast('Grup tidak ditemukan', true);
+  var nama = namaPolosGrup(t), daftar = baruGrupDari(t.manual ? [x] : t.pk.concat(t.pk.indexOf(x) < 0 ? [x] : []), nama);
+  aturGrupLokal(daftar, x.nama + ' dipindah ke ' + t.judul, btn, function () { tutup(); });
+};
+AKSI.grupbubar = function (v, btn) {
+  if (!btn.classList.contains('yakin')) {
+    btn.classList.add('yakin'); btn.setAttribute('data-l0', btn.innerHTML); btn.textContent = 'Yakin bubarkan?';
+    setTimeout(function () { if (document.body.contains(btn) && !btn.disabled) { btn.classList.remove('yakin'); btn.innerHTML = btn.getAttribute('data-l0'); } }, 4000);
+    return;
+  }
+  var g = grupDariId(v);
+  if (!g) return toast('Grup tidak ditemukan', true);
+  if (/^m:/.test(v)) return aturGrupLokal(baruGrupDari(g.pk, ''), g.judul + ' dibubarkan (' + g.pk.length + ' PK keluar dari grup)', btn, keGrupPengurus);
+  sibuk(btn, true);
+  var item = { id: v, nama: g.judul };
+  panggil('apiGrupBubar', item, true).then(function () {
+    S.data.grupBubar = ((S.data.grupBubar || []).filter(function (x) { return x.id !== v; })).concat([{ id: v, nama: g.judul, t: hariLokal() }]);
+    simpanCache(); keGrupPengurus(); toast(g.judul + ' dibubarkan. Bisa dikembalikan dari "Grup dibubarkan".');
+  }).catch(function (er) { sibuk(btn, false); toast(er.message, true); });
+};
+AKSI.grupkembali = function (v, btn) {
+  sibuk(btn, true);
+  panggil('apiGrupBubar', { id: v }, false).then(function () {
+    S.data.grupBubar = (S.data.grupBubar || []).filter(function (x) { return x.id !== v; });
+    simpanCache(); renderPanel(); render(); toast('Grup dikembalikan');
+  }).catch(function (er) { sibuk(btn, false); toast(er.message, true); });
+};
 
 function muatRiwayat(npp) {
   panggil('apiRiwayat', npp).then(function (r) {
@@ -14094,6 +14978,8 @@ document.addEventListener('input', function (ev) {
   if (ev.target.id === 'kcari') return usulKontak(ev.target.value);
   if (ev.target.id === 'gcari') { S.cariGrup = ev.target.value; var hg = document.getElementById('hasilgrup'); if (hg) hg.innerHTML = isiGrup(); return; }
   if (ev.target.id === 'acari') { saringAnggota(ev.target.value); return; }
+  if (ev.target.id === 'bgcari' || ev.target.id === 'gpcari') { var pq = S.panel[S.panel.length - 1]; if (pq) { pq.q = ev.target.value; isiPanelGrup5b(); } return; }
+  if (ev.target.classList && ev.target.classList.contains('bg-nama')) { var pn = S.panel[S.panel.length - 1], kn = ev.target.getAttribute('data-k'); if (pn && pn.pilih && pn.pilih[kn]) pn.pilih[kn].nama = ev.target.value; return; }
   if (ev.target.classList && ev.target.classList.contains('isian-blast')) {
     var pb = panelBlastAktif(), t = pb && templatDari(pb.idT), pr = document.getElementById('pratinjau');
     if (!pb || !t) return;
