@@ -9551,7 +9551,7 @@ function gambarRincian(p, r) {
  *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
  *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.12.1';
+var VERSI_APP = '2.12.2';
 var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
 function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, zaman: '', seq: 0, antre: [], gagal: [], galatAntre: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
@@ -12701,7 +12701,8 @@ function panelSaring(p) {
 var KATA_UMUM = ('sejahtera jaya makmur abadi mandiri usaha desa pemerintah kantor dinas tenaga pendukung kesehatan pendidikan sekolah yayasan koperasi toko ' +
   'bersama indonesia madura pamekasan sentosa sumber berkah utama karya putra putri bahari agung baru raya perkasa lestari kecamatan kabupaten sppg bumdes ' +
   'kader posyandu kelurahan badan permusyawaratan perangkat aparat kepala layanan pelayanan umum negeri swasta islam terpadu madrasah pondok pesantren ' +
-  'cabang pusat unit dagang niaga mitra global media tunggal sukses sinar cahaya').split(' ');
+  'cabang pusat unit dagang niaga mitra global media tunggal sukses sinar cahaya ' +
+  'daerah graha sarana prima motor mobil persada nusantara mulia indah sejati').split(' '); // 2.12.2: kata umum tambahan (usulan nama mirip)
 function usulanGabung() {
   // "Bukan" diingat di spreadsheet (PENGATURAN.usulan_bukan) agar sama di HP dan komputer; catatan lama di HP ini tetap dipakai
   var bukan = Object.assign({}, lsBaca('lensa_pk_bukan') || {}), umum = {}, orang = {}, out = [], ada = {};
@@ -12733,12 +12734,21 @@ function usulanGabung() {
   var frek = {}, perTok = {};
   S.data.pk.forEach(function (p) { tok(p).forEach(function (t) { frek[t] = (frek[t] || 0) + 1; (perTok[t] = perTok[t] || []).push(p); }); });
   var idsPk = function (p) { return (p.kontak || []).map(function (c) { return c.id; }); };
+  // 2.12.2: hanya PK yang dikelompokkan per orang (aturan grup 5B: desa, instansi, SPPG, lembaga desa tidak diusulkan)
+  var perOrangPk = {}, perOrang = function (p) {
+    if (!(p.npp in perOrangPk)) perOrangPk[p.npp] = !window.KitGrup || !window.KitGrup.aturan(p);
+    return perOrangPk[p.npp];
+  };
+  // 2.12.2: "Bukan" pada usulan nama mirip diingat per PK + kata → PK itu tidak diusulkan lagi dengan pasangan lain untuk kata yang sama
+  var kunciKata = function (p, t) { return 'K:' + p.npp + '|' + t; };
   Object.keys(perTok).forEach(function (t) {
     if (frek[t] < 2 || frek[t] > 4) return;
     var ps = perTok[t];
     for (var i = 0; i < ps.length; i++) for (var j = i + 1; j < ps.length; j++) {
       var x = ps[i], y = ps[j];
       if (!x.kecamatan || x.kecamatan !== y.kecamatan) continue;
+      if (!perOrang(x) || !perOrang(y)) continue;
+      if (bukan[kunciKata(x, t)] || bukan[kunciKata(y, t)]) continue;
       var ix = idsPk(x), iy = idsPk(y);
       if (ix.some(function (id) { return iy.indexOf(id) >= 0; })) continue;
       if (x.grupManual && x.grupManual === y.grupManual) continue;
@@ -12754,7 +12764,7 @@ function usulanGabung() {
       var kunci = 'M:' + [x.npp, y.npp].sort().join('|');
       if (bukan[kunci] || ada[kunci]) continue;
       ada[kunci] = 1;
-      out.push({ jenis: 'tambah', kunci: kunci, id: tuju.id, nama: tuju.nama, pk: pk, teman: teman, kata: t, grupNama: orang[tuju.id] ? pkUtama(orang[tuju.id].pk).nama : teman.nama,
+      out.push({ jenis: 'tambah', kunci: kunci, kunciBukan: kunciKata(pk, t), id: tuju.id, nama: tuju.nama, pk: pk, teman: teman, kata: t, grupNama: orang[tuju.id] ? pkUtama(orang[tuju.id].pk).nama : teman.nama,
         alasan: 'nama mirip ("' + t + '"), ' + (x.desa && x.desa === y.desa ? 'desa ' + x.desa : 'kecamatan ' + x.kecamatan) });
     }
   });
@@ -14079,6 +14089,8 @@ var AKSI = {
   },
   saringgrup: function (v) { S.saringGrup = v || ''; render(); },
   usulbukan: function (v) {
+    var u = (S.usulan || []).filter(function (x) { return x.kunci === v; })[0];
+    if (u && u.kunciBukan) v = u.kunciBukan; // 2.12.2: nama mirip → diingat per PK + kata
     var b = lsBaca('lensa_pk_bukan') || {};
     b[v] = 1; lsTulis('lensa_pk_bukan', b);
     S.data.usulanBukan = (S.data.usulanBukan || []).concat([v]);
