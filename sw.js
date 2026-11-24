@@ -1,7 +1,7 @@
 // LENSA PK 2.0 — service worker: aplikasi tetap bisa dibuka tanpa sinyal.
 // Halaman diambil dari jaringan dulu (agar versi baru langsung terpakai), cadangan dari simpanan bila offline.
 // Tidak pernah menyimpan permintaan ke server sinkron (Google) — data hanya di IndexedDB perangkat.
-const SIMPANAN = 'lensa-pk-v29';
+const SIMPANAN = 'lensa-pk-v30';
 const BERKAS = ['./', './index.html', './hp.html', './manifest.webmanifest', './ikon-32.png', './ikon-192.png', './ikon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(SIMPANAN).then(c => c.addAll(BERKAS))); self.skipWaiting(); });
 self.addEventListener('activate', e => {

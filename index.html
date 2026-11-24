@@ -754,7 +754,8 @@ function gasMuatLembar(peta) {
 /* =====================================================================
  *  KitImpor — modul Impor bersama LENSA Suite (Tahap 2A).
  *  Satu pengurai laporan sistem (ITW/ITB, Monitoring, Data Badan Usaha, KPI084, KPI085, Kartu Iuran,
- *  Status PK LENSA, 3C: Daftar Iuran Belum Rinci / IBR) untuk mesin LENSA (Apps Script & perangkat), Monitor SPPG, dan Hub.
+ *  Status PK LENSA, 3C: Daftar Iuran Belum Rinci / IBR; Tahap 7: Proyek Jakon Aktif untuk SIGAP Jakon)
+ *  untuk mesin LENSA (Apps Script & perangkat), Monitor SPPG, SIGAP Jakon, dan Hub.
  *  ES5 murni, tanpa layanan Google: jalan di Apps Script dan di browser.
  *  Laporan diurai sekali di perangkat yang mengunggah, lalu dikirim sebagai "laporan ringkas"
  *  (hanya kolom yang dipakai) ke Gudang Laporan KC.
@@ -872,6 +873,25 @@ var KitImpor = (function () {
       ['ijt', 'ibr jatuh tempo ijt|ibr jatuh tempo|jatuh tempo|ijt', 'Ya'],
       ['idm', 'ibr dibayar dimuka idm|ibr dibayar dimuka|dibayar dimuka|idm', '']
     ],
+    // Tahap 7: Proyek Jakon Aktif (laporan per pembina / se-KC; judul kolom bergeser dari isinya → dipetakan menurut isi)
+    PROYEK_JAKON: [
+      ['no_proyek', 'no proyek|nomor proyek', 'Ya'],
+      ['kode_tender', 'kode tender|kode paket|kode rup', ''],
+      ['nama_proyek', 'nama proyek|nama paket', 'Ya'],
+      ['npp', 'npp', 'Ya'],
+      ['nama', 'nama pk bu|nama bu|nama', ''],
+      ['tgl_awal', 'tgl awal|tanggal awal', 'Ya'],
+      ['tgl_akhir', 'tgl akhir|tanggal akhir', 'Ya'],
+      ['nilai_proyek', 'nilai proyek|nilai kontrak', 'Ya'],
+      ['nilai_iuran', 'nilai iuran', 'Ya'],
+      ['tk_entri', 'entri', ''],
+      ['tk_bnba', 'bnba', ''],
+      ['tk_valid', 'valid bnba', ''],
+      ['kanal', 'kanal', ''],
+      ['sumber_dana', 'sumber dana', ''],
+      ['pemilik', 'nama pemilik|pemilik', ''],
+      ['kontak', 'no kontak|kontak', '']
+    ],
     KPI085: [
       ['npp', 'npp', 'Ya'],
       ['pembina', 'nama pembina|pembina', 'Ya'],
@@ -891,10 +911,12 @@ var KitImpor = (function () {
     KPI084: ['no', 'bulan', 'pk_itw', 'pk_lancar', 'pk_kurang_lancar', 'pk_diragukan', 'pk_macet', 'mig_itw', 'mig_lancar', 'mig_kurang_lancar', 'mig_diragukan',
       'cap_itw', 'cap_lancar', 'cap_kurang_lancar', 'cap_diragukan', 'rata_itw', 'rata_lancar', 'rata_kurang_lancar', 'rata_diragukan', 'bobot', 'skor'],
     KPI085: ['no', 'pembina', 'npp', 'nama', 'kelas_lalu', 'kelas_ini', 'migrasi'],
-    IBR: ['no', 'npp', 'div', 'nama', 'posting_terakhir', 'tgl_transaksi', 'kode_transaksi', 'ijt', 'idm']
+    IBR: ['no', 'npp', 'div', 'nama', 'posting_terakhir', 'tgl_transaksi', 'kode_transaksi', 'ijt', 'idm'],
+    PROYEK_JAKON: ['no', 'no_proyek', 'kode_tender', 'nama_proyek', 'npp', 'nama', 'tgl_awal', 'tgl_akhir', 'nilai_proyek', 'nilai_iuran',
+      'tk_entri', 'tk_bnba', 'tk_valid', 'kanal', 'sumber_dana', 'pemilik', 'kontak']
   };
 
-  var NAMA_LAPORAN = { DATA_BU: 'Data Badan Usaha', MONITORING: 'Monitoring', ITW_ITB: 'ITW/ITB', KARTU_IURAN: 'Kartu Iuran', KPI084: 'KPI084 Rekap Migrasi Piutang', KPI085: 'KPI085 Detil Migrasi Piutang', LENSA_STATUS: 'STATUS_PK (LENSA)', IBR: 'Daftar IBR (Iuran Belum Rinci)' };
+  var NAMA_LAPORAN = { DATA_BU: 'Data Badan Usaha', MONITORING: 'Monitoring', ITW_ITB: 'ITW/ITB', KARTU_IURAN: 'Kartu Iuran', KPI084: 'KPI084 Rekap Migrasi Piutang', KPI085: 'KPI085 Detil Migrasi Piutang', LENSA_STATUS: 'STATUS_PK (LENSA)', IBR: 'Daftar IBR (Iuran Belum Rinci)', PROYEK_JAKON: 'Proyek Jakon Aktif' };
   var BULAN_SINGKAT = { jan: 1, feb: 2, mar: 3, apr: 4, mei: 5, may: 5, jun: 6, jul: 7, agu: 8, ags: 8, agt: 8, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, des: 12, dec: 12 };
   var BULAN_KPI = /^(jan|feb|mar|apr|mei|may|jun|jul|agu|ags|agt|aug|sep|okt|oct|nov|des|dec)[a-z]*$/;
   var TIPE_KOLOM = {
@@ -909,7 +931,9 @@ var KitImpor = (function () {
     sipp_prs: 'sipp', ibr_ijt: 'angka', ibr_idm: 'angka',
     tgl_bayar: 'tgl', jht: 'angka', jkk: 'angka', jkm: 'angka', jp: 'angka', jkp: 'angka', denda: 'angka', total_iuran: 'angka',
     jumlah_tk: 'bulat', kelas_lalu: 'kelas', kelas_ini: 'kelas', migrasi: 'yatidak',
-    posting_terakhir: 'blth', tgl_transaksi: 'tgl', kode_transaksi: 'kode', ijt: 'angka', idm: 'angka'
+    posting_terakhir: 'blth', tgl_transaksi: 'tgl', kode_transaksi: 'kode', ijt: 'angka', idm: 'angka',
+    no_proyek: 'noproyek', kode_tender: 'kodetender', nama_proyek: 'teks', tgl_awal: 'tgl', tgl_akhir: 'tgl', nilai_proyek: 'angka', nilai_iuran: 'angka',
+    tk_entri: 'bulat', tk_bnba: 'bulat', tk_valid: 'bulat', kanal: 'kanal', sumber_dana: 'sumberdana', pemilik: 'teks', kontak: 'kontak'
   };
   var SERING_KOSONG = { blth_na: 1, kategori: 1, keps_jp: 1, prog: 1, jkp: 1, denda: 1 };
 
@@ -1156,6 +1180,7 @@ var KitImpor = (function () {
 
   /** Aturan pengenal jenis laporan. Jenis yang tidak dipakai aplikasi ini: ditolak dengan pesannya (CFG.tolak) atau dilewati. */
   var ATURAN_JUDUL = [
+    ['PROYEK_JAKON', function (t) { return /no proyek/.test(t) && /(nilai iuran|tgl awal|masa proyek)/.test(t); }],
     ['LENSA_STATUS', function (t) { return /kontak utama/.test(t) && /(status bayar|segmen)/.test(t); }],
     ['KPI084', function (t) { return /pkbu itw/.test(t) && /menunggak/.test(t); }],
     ['KPI085', function (t) { return /migrasi/.test(t) && /piutang/.test(t) && /pembina/.test(t); }],
@@ -1168,7 +1193,7 @@ var KitImpor = (function () {
   ];
   var ATURAN_FILE = [
     ['KPI084', /kpi\s*_?084/], ['KPI085', /kpi\s*_?085/], ['LENSA_STATUS', /status.?pk/], ['ITW_ITB', /itw|itb/], ['KARTU_IURAN', /kartu/],
-    ['MONITORING', /monitor/], ['DATA_BU', /badan.?usaha|dbu|data.?bu/], ['IBR', /ibr|belum.?rinci/]
+    ['MONITORING', /monitor/], ['DATA_BU', /badan.?usaha|dbu|data.?bu/], ['IBR', /ibr|belum.?rinci/], ['PROYEK_JAKON', /proyek.?jakon|jakon.?aktif/]
   ];
   function dipakai(j) { return CFG.jenis.indexOf(j) >= 0; }
   function tebakJenis(teks, namaFile) {
@@ -1237,6 +1262,11 @@ var KitImpor = (function () {
       case 'prog': return /^\dP$/i.test(x);
       case 'sipp': return /^(-|sipp|prs|sipp\/prs)$/i.test(x);
       case 'kelas': return !!kelasDariTeks(x);
+      case 'noproyek': return /^\d{10,20}$/.test(x);
+      case 'kodetender': return /^[A-Za-z0-9][A-Za-z0-9\-\/\.]{1,40}$/.test(x);
+      case 'kanal': return /^[A-Za-z][A-Za-z \-]{1,20}$/.test(x);
+      case 'sumberdana': return /^[A-Za-z][A-Za-z0-9 \-\.]{1,30}$/.test(x);
+      case 'kontak': return /[A-Za-z]{2,}|\d{8,}/.test(x);
     }
     return true;
   }
@@ -1369,14 +1399,17 @@ var KitImpor = (function () {
    * → kode pembina untuk baris-baris di bawahnya. 3C: untuk IBR; 3C.1: untuk semua jenis laporan ber-NPP.
    */
   var POLA_PEMBINA = /pembina\s*:?\s*([A-Z]{2}\d{6})/i;
+  // Tahap 7 (Proyek Jakon Aktif): kelompok "Pembina : EJAKON - EJAKON" = proyek dari E-Jakon yang belum dibagi; nama pembina ikut
+  var POLA_PEMBINA_PJ = /pembina\s*:?\s*([A-Z]{2}\d{6}|EJAKON)(?:\s*-\s*([A-Za-z][A-Za-z .,'\-]*[A-Za-z]))?/i;
   function ambilBaris(an, peta, grid) {
-    var out = [], prev = null, pembinaGrup = '';
-    for (var r0 = 0; r0 < an.mulai; r0++) { var m0 = (grid[r0] || []).join(' ').match(POLA_PEMBINA); if (m0) pembinaGrup = m0[1].toUpperCase(); }
+    var out = [], prev = null, pembinaGrup = '', namaGrup = '', pj = an.jenis === 'PROYEK_JAKON', pola = pj ? POLA_PEMBINA_PJ : POLA_PEMBINA;
+    var grupDari = function (m) { pembinaGrup = m[1].toUpperCase(); namaGrup = pj && m[2] ? judulKata(m[2].replace(/\s{2,}.*$/, '')) : ''; };
+    for (var r0 = 0; r0 < an.mulai; r0++) { var m0 = (grid[r0] || []).join(' ').match(pola); if (m0) grupDari(m0); }
     for (var r = an.mulai; r < grid.length; r++) {
       var row = grid[r];
       if (peta.npp !== undefined && !rapikanNpp(row[peta.npp])) {
-        var mP = row.join(' ').match(POLA_PEMBINA);
-        if (mP) pembinaGrup = mP[1].toUpperCase();
+        var mP = row.join(' ').match(pola);
+        if (mP) grupDari(mP);
         if (an.jenis === 'IBR') continue; // judul kelompok, judul kolom berulang, jumlah
       }
       var o = {};
@@ -1397,6 +1430,14 @@ var KitImpor = (function () {
         continue;
       }
       var npp = rapikanNpp(o.npp);
+      if (pj) {
+        // satu baris per No. Proyek; proyek swakelola tanpa NPP tetap diambil
+        if (!/^\d{10,20}$/.test(o.no_proyek)) { prev = null; continue; }
+        o.npp = npp;
+        o.pembina = pembinaGrup; o.pembina_nama = namaGrup;
+        out.push(o);
+        continue;
+      }
       if (npp) {
         o.npp = npp;
         o.div = rapikanDiv(o.div);
@@ -1433,6 +1474,8 @@ var KitImpor = (function () {
       m = f.match(/((?:19|20)\d{2})[\-_\.]?(0[1-9]|1[0-2])[\-_\.]?([0-2]\d|3[01])/);
       if (m) cetak = ymd(m[1], m[2], m[3]);
       else if ((m = f.match(/([0-2]\d|3[01])[\-_\.](0[1-9]|1[0-2])[\-_\.]((?:19|20)\d{2})/))) cetak = ymd(m[3], m[2], m[1]);
+      // Tahap 7: unduhan Proyek Jakon Aktif bernama ..._24112026 (ddmmyyyy tanpa pemisah)
+      else if (an.jenis === 'PROYEK_JAKON' && (m = f.match(/(?:^|[^\d])([0-2]\d|3[01])(0[1-9]|1[0-2])((?:19|20)\d{2})(?:[^\d]|$)/))) cetak = ymd(m[3], m[2], m[1]);
     }
     var dariJudul = !!cetak;
     var kini = CFG.hariIni();
@@ -1453,7 +1496,8 @@ var KitImpor = (function () {
       DATA_BU: function (o) { return keAngka(o.total_upah) !== null && (!o.blth_iuran || keBlth(o.blth_iuran)); },
       KARTU_IURAN: function (o) { return keTanggal(o.tgl_bayar) && keAngka(o.total_iuran) !== null; },
       KPI084: function (o) { return keAngka(o.pk_itw) !== null && keAngka(o.mig_itw) !== null; },
-      KPI085: function (o) { return kelasDariTeks(o.kelas_lalu) && /^(YA|TIDAK|Y|T)$/i.test(String(o.migrasi).trim()); }
+      KPI085: function (o) { return kelasDariTeks(o.kelas_lalu) && /^(YA|TIDAK|Y|T)$/i.test(String(o.migrasi).trim()); },
+      PROYEK_JAKON: function (o) { return keTanggal(o.tgl_awal) && keAngka(o.nilai_proyek) !== null; }
     }[jenis];
     if (!uji) return;
     var cocok = data.filter(uji).length;
@@ -1564,7 +1608,7 @@ var KitImpor = (function () {
   /* ---------------- laporan ringkas (dikirim ke Gudang) ---------------- */
 
   /** Jenis yang disimpan di Gudang Laporan KC (Kartu Iuran tetap di LENSA; Status PK hanya Monitor). */
-  var GUDANG = { ITW_ITB: true, MONITORING: true, DATA_BU: true, KPI084: true, KPI085: true, IBR: true };
+  var GUDANG = { ITW_ITB: true, MONITORING: true, DATA_BU: true, KPI084: true, KPI085: true, IBR: true, PROYEK_JAKON: true }; // PROYEK_JAKON: salinan dari SIGAP Jakon (Hub 1.9)
   var MAKS_JUDUL_TEKS = 4000;
 
   /** Hasil urai → laporan ringkas: hanya kolom yang terbaca, nilai teks apa adanya. */
@@ -1582,7 +1626,7 @@ var KitImpor = (function () {
     };
     // laporan se-KC (beberapa pembina): judul (pembina kelompok pertama) tidak mewakili seluruh laporan → 'SEMUA'
     var iPb = kolom.indexOf('pembina'), kode = {};
-    if (iPb >= 0) lr.baris.forEach(function (r) { var m = String(r[iPb] || '').toUpperCase().match(/[A-Z]{2}\d{6}/); if (m) kode[m[0]] = true; });
+    if (iPb >= 0) lr.baris.forEach(function (r) { var m = String(r[iPb] || '').toUpperCase().match(/[A-Z]{2}\d{6}|^EJAKON$/); if (m) kode[m[0]] = true; }); // EJAKON: Proyek Jakon belum dibagi
     if (Object.keys(kode).length > 1) { lr.per.pembina = ''; lr.per.namaPembina = ''; }
     lr.pembina = pembinaLaporan(lr);
     lr.sidik = sidik(lr);
@@ -1609,7 +1653,7 @@ var KitImpor = (function () {
     if (lr.per && lr.per.pembina) return lr.per.pembina;
     var i = lr.kolom.indexOf('pembina'), kode = {};
     if (i < 0 || lr.jenis === 'KPI085') return lr.jenis === 'KPI084' || lr.jenis === 'KPI085' ? 'KANTOR' : '';
-    (lr.baris || []).forEach(function (r) { var m = String(r[i] || '').toUpperCase().match(/[A-Z]{2}\d{6}/); if (m) kode[m[0]] = true; });
+    (lr.baris || []).forEach(function (r) { var m = String(r[i] || '').toUpperCase().match(/[A-Z]{2}\d{6}|^EJAKON$/); if (m) kode[m[0]] = true; });
     var k = Object.keys(kode);
     return k.length === 1 ? k[0] : (k.length > 1 ? 'SEMUA' : '');
   }
@@ -3183,7 +3227,7 @@ var CSS_PESAN_WA = "*{box-sizing:border-box}\n.modul-wa{font:15px/1.45 system-ui
  * ==========================================================================
  */
 
-var VERSI = '1.35'; // 1.35 (LENSA Suite Tahap 6): Analisa KC (tab ANALISA_KC dari Hub, apiAnalisaKc di perangkat Pemilik, apiPerbaruiAnalisaKc) ·
+var VERSI = '1.36'; // 1.36 (Tahap 7 bagian 2): Gudang menyimpan salinan laporan Proyek Jakon Aktif dari SIGAP Jakon (Hub 1.9), tombol Ambil sekarang di Pusat Kendali · 1.35 (LENSA Suite Tahap 6): Analisa KC (tab ANALISA_KC dari Hub, apiAnalisaKc di perangkat Pemilik, apiPerbaruiAnalisaKc) ·
 // 1.34: 1.34 (LENSA Suite 5D): menu nyala/mati per peran (akses-inti + AKSES_CFG.menu, perintah aturMenu) ·
 // 1.33: 1.33 (LENSA Suite 5C.1): Kartu 360° per NPP (apiKartu360, dihitung di perangkat dari tab LENSA, NPP terkait digabung) +
 // tab RINGKAS_360 (ringkasan aplikasi lain, diisi Hub tiap pagi / apiPerbarui360; hanya ke perangkat Pemilik).
@@ -4223,6 +4267,7 @@ function siapkanDatabaseDiam_() {
 KitImpor.pasang({
   jenis: JENIS_LENSA.concat(['IBR']), // 1.27 (3C): Daftar IBR dikenali untuk Gudang (MyTagihan Desa); LENSA sendiri memakai IBR dari ITW/ITB
   saranPemetaan: true,
+  tolak: { PROYEK_JAKON: 'Laporan Proyek Jakon Aktif diunggah di SIGAP Jakon (menu Data); salinannya otomatis masuk Gudang Laporan KC.' }, // 1.36
   tambahan: function () { return bacaTab_('PEMETAAN').data; },
   hariIni: function () { return hariIniStr_(); },
   tglLokal: function (d) { return fmt_(d, 'yyyy-MM-dd'); }
@@ -9752,7 +9797,7 @@ function gambarRincian(p, r) {
  *  + pengaturan aplikasi + antrean sinkron. Bila PIN dipasang, isi disandikan
  *  AES-GCM dengan kunci turunan PIN (PBKDF2-SHA256); tanpa PIN data tidak terbaca.
  * ---------------------------------------------------------------------- */
-var VERSI_APP = '2.14.0'; // 2.14.0 (LENSA Suite Tahap 6): Analisa KC di Dasbor (cakupan Binaan saya / Seluruh KC / per pembina, peringkat, tren, churn, peta panas sektor × kecamatan) · 2.13.0 (LENSA Suite 5D): menu nyala/mati + Perlu perhatian di Pusat Kendali
+var VERSI_APP = '2.15.0'; // 2.15.0 (Tahap 7 bagian 2): Pusat Kendali — laporan Proyek Jakon SIGAP → Gudang (Ambil sekarang); istilah Heat maps · 2.14.0 (LENSA Suite Tahap 6): Analisa KC di Dasbor (cakupan Binaan saya / Seluruh KC / per pembina, peringkat, tren, churn, peta panas sektor × kecamatan) · 2.13.0 (LENSA Suite 5D): menu nyala/mati + Perlu perhatian di Pusat Kendali
 var ID_HALAMAN = 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 var SIMPAN = { db: null, jenis: 'memori', tertunda: null, galat: '', terakhir: '', dimuat: 0, kunci: null, garam: null, setelahMuatUlang: null };
 function appKosong() { return { pengaturan: { sumber: '', dataPer: '' }, impor: [], sinkron: { url: '', kunci: '', idp: '', token: '', idKlien: '', akses: null, terakhirOk: 0, hash: {}, zaman: '', seq: 0, antre: [], gagal: [], galatAntre: [], terakhir: '', galat: '', sppg: null, urlSheet: '' } }; }
@@ -11084,14 +11129,14 @@ function petaKec(w, target) {
     t += '<text x="' + k.lx + '" y="' + (k.ly - 1) + '" class="akc-lbl" fill="' + warnaTeks + '" stroke="' + halo + '">' + e(k.nama) + '</text>' +
       (v === null ? '' : '<text x="' + k.lx + '" y="' + (k.ly + 10) + '" class="akc-lbl angka" fill="' + warnaTeks + '" stroke="' + halo + '">' + akcTeks(ukur, v) + '</text>');
   });
-  var svg = '<svg viewBox="-3 -3 ' + (KitPeta.lebar + 6) + ' ' + (KitPeta.tinggi + 6) + '" class="akc-peta" role="img" aria-label="Peta kecamatan Kabupaten Pamekasan, warna menurut ' + e((AKC_UKUR.filter(function (u) { return u[0] === ukur; })[0] || [])[1]) + '">' + g + t + '</svg>';
+  var svg = '<svg viewBox="-3 -3 ' + (KitPeta.lebar + 6) + ' ' + (KitPeta.tinggi + 6) + '" class="akc-peta" role="img" aria-label="Heat maps kecamatan Kabupaten Pamekasan, warna menurut ' + e((AKC_UKUR.filter(function (u) { return u[0] === ukur; })[0] || [])[1]) + '">' + g + t + '</svg>';
   var urut = KitPeta.kec.map(function (k) { return { nama: k.nama, v: nilai[k.nama], s: w.kec[k.nama] }; })
     .concat([KitAnalisa.LUAR, KitAnalisa.TAKTAHU].filter(function (k) { return w.kec[k] && w.kec[k].pk; }).map(function (k) { return { nama: k, v: akcNilai(ukur, w.kec[k]), s: w.kec[k], luar: true }; }))
     .sort(function (a, b) { return (a.v === null) - (b.v === null) || (a.luar ? 1 : 0) - (b.luar ? 1 : 0) || (b.v || 0) - (a.v || 0); });
   var skala = ukur === 'itb' ? 1 : maks || 1;
   var daftar = urut.map(function (x) {
     var c = akcWarna(ukur, x.v, maks, target);
-    return '<div class="akc-urut-kec' + (x.luar ? ' luar' : '') + '" title="' + e(x.s && x.s.pk ? akcJudulSel('Semua sektor', x.nama, x.s) : x.nama + ': belum ada PK') + '"><span>' + e(x.nama) + (x.luar ? ' <span class="sub">(di luar peta)</span>' : '') + '</span>' +
+    return '<div class="akc-urut-kec' + (x.luar ? ' luar' : '') + '" title="' + e(x.s && x.s.pk ? akcJudulSel('Semua sektor', x.nama, x.s) : x.nama + ': belum ada PK') + '"><span>' + e(x.nama) + (x.luar ? ' <span class="sub">(di luar maps)</span>' : '') + '</span>' +
       '<span class="batang tipis"><span style="width:' + (x.v === null ? 0 : Math.max(2, x.v / skala * 100)) + '%;background:' + (x.v === null ? 'transparent' : c.bg) + '"></span></span><b>' + (x.v === null ? '–' : akcTeks(ukur, x.v)) + '</b><span class="sub">' + (x.s ? x.s.pk : 0) + ' PK</span></div>';
   }).join('');
   return '<div class="akc-peta-grid"><div>' + svg + legendaPanas(ukur, maks, target) + '</div><div class="akc-daftar-kec"><h3 class="akc-sub">Urutan kecamatan</h3>' + daftar + '</div></div>';
@@ -11143,7 +11188,7 @@ function wadahSaya(d) {
 /** Kartu peta panas di Dasbor "Binaan saya" (semua perangkat). */
 function kartuPanasSaya(d) {
   var x = wadahSaya(d);
-  return kartu('Peta panas kecamatan &amp; sektor', angkaID(x.w.pk) + ' PK binaan · warna menurut angka yang dipilih', petaPanas(x.w, x.contoh, x.target));
+  return kartu('Heat maps kecamatan &amp; sektor', angkaID(x.w.pk) + ' PK binaan · warna menurut angka yang dipilih', petaPanas(x.w, x.contoh, x.target));
 }
 
 /* ---------- tren & perbandingan ---------- */
@@ -11257,7 +11302,7 @@ function layarAkc(A) {
     '<div class="catatan">Keluar ÷ (TK awal tahun + masuk). Perkiraan dari Monitoring tanpa pengurang natural attrition — bukan angka KPI resmi.</div>'
     : '<div class="kosong">Belum ada Monitoring se-KC di Gudang.</div>');
   out += '<div class="grid2">' + kSkala + kMig + '</div>' + kChurn;
-  out += kartu('Peta panas kecamatan &amp; sektor', angkaID(n) + ' PK · warna menurut angka yang dipilih', petaPanas(x, info.contohIlo, tp));
+  out += kartu('Heat maps kecamatan &amp; sektor', angkaID(n) + ' PK · warna menurut angka yang dipilih', petaPanas(x, info.contohIlo, tp));
   return out;
 }
 
@@ -11330,6 +11375,22 @@ function urlAplikasi(k) {
 }
 function namaApp(k) { return APP_AKSES.filter(function (a) { return a.k === k; })[0].nama; }
 
+/** 2.15 (Tahap 7 bagian 2): laporan Proyek Jakon Aktif diunggah di SIGAP Jakon → salinannya diambil Hub ke Gudang (tiap jam). */
+function blokPjSigap(x, versiHub) {
+  var judul = '<h3 class="sub-judul">Laporan Proyek Jakon dari SIGAP Jakon</h3>';
+  if (versiHub && /^1\.[0-8]\./.test(String(versiHub))) return judul + '<div class="catatan" style="margin-top:0">Pasang Hub.gs 1.9 agar salinan laporan Proyek Jakon Aktif dari SIGAP Jakon tersimpan di Gudang.</div>';
+  var tersambung = AKS.data && AKS.data.server && AKS.data.server.sigap && AKS.data.server.sigap.tersambung;
+  var tombol = '<div class="aksi-baris"><button class="btn" data-a="ambilJakon">Ambil sekarang dari SIGAP</button></div>';
+  var info = 'Laporan Proyek Jakon Aktif diunggah di SIGAP Jakon (menu Data); salinannya diambil ke Gudang Laporan KC otomatis tiap jam.';
+  if (!x || !x.status) return judul + '<div class="catatan" style="margin-top:0">' + (tersambung ? 'Belum pernah diambil. ' : 'Sambungkan SIGAP Jakon di bawah (alamat /exec + kunci admin). ') + info + '</div>' + (tersambung ? tombol : '');
+  var merah = x.status === 'Gagal' || x.status === 'SIGAP belum disambungkan' || x.status === 'Gudang belum disiapkan';
+  var t = x.terakhir && x.terakhir.laporan && x.terakhir.laporan.length ? x.terakhir : null;
+  var ket = 'Diperiksa ' + e(waktuSingkat(x.waktu)) + ' · <b' + (merah ? ' style="color:#B4442A"' : '') + '>' + e(x.status) + '</b>' +
+    (x.pesan && merah ? '<div style="color:#B4442A">' + e(x.pesan) + '</div>' : '') +
+    (t ? '<div>Terakhir diambil ' + e(waktuSingkat(t.waktu)) + ': ' + t.laporan.map(function (l) { return e(l.nama_file) + ' → ' + e(l.id); }).join(' · ') + '</div>' : '') +
+    (x.pemicu === false ? '<div style="color:#B4442A">Pemicu tiap jam belum terpasang: tekan Ambil sekarang.</div>' : '');
+  return judul + '<div class="catatan" style="margin-top:0">' + ket + '</div>' + tombol;
+}
 async function muatAkses() {
   if (!pemilikPerangkat()) return;
   muatHub();
@@ -11599,9 +11660,9 @@ function daftarPerhatian() {
         var p = x[1].sel / batas * 100;
         if (p >= 80) tambah(p >= 90 ? 'merah' : 'kuning', x[0] + ' sudah ' + persenSel(x[1].sel, batas) + ' dari batas 10 juta sel', 'Laporan lama dipindah ke arsip otomatis; bila tetap penuh, kabari pengembang.', btn('lihatKartu', 'hub', 'Lihat'));
       });
-      [['ibr', 'Kiriman IBR ke MyTagihan Desa', 'kirimIbr'], ['kcSigap', 'Kiriman data KC ke SIGAP Jakon', 'kirimKc']].forEach(function (x) {
+      [['ibr', 'Kiriman IBR ke MyTagihan Desa', 'kirimIbr'], ['kcSigap', 'Kiriman data KC ke SIGAP Jakon', 'kirimKc'], ['pjSigap', 'Pengambilan laporan Proyek Jakon dari SIGAP', 'ambilJakon', 'Ambil lagi']].forEach(function (x) {
         var st = h[x[0]];
-        if (st && st.status === 'Gagal') tambah('merah', x[1] + ' gagal' + (st.waktu ? ' ' + waktuSingkat(st.waktu) : ''), st.pesan || '', btn(x[2], '', 'Kirim lagi'));
+        if (st && st.status === 'Gagal' && (x[0] !== 'pjSigap' || st.coba >= 2)) tambah('merah', x[1] + ' gagal' + (st.waktu ? ' ' + waktuSingkat(st.waktu) : ''), st.pesan || '', btn(x[2], '', x[3] || 'Kirim lagi'));
       });
     }
     var baru = (h.galat || []).filter(function (g) { return umurJam(g.waktu) <= 72; });
@@ -11844,7 +11905,7 @@ function kartuHub() {
   if (h.galatMuat) return kartu('Pusat Kendali LENSA Suite', 'tidak bisa dimuat', '<div class="kosong" style="color:#B4442A">' + e(h.galatMuat) + '</div>', kanan);
   var isi = '';
   if (!h.adaHub) isi += '<div class="catatan" style="margin-top:0;color:#B4442A">Berkas Hub.gs belum dipasang di proyek Apps Script LENSA PK: cadangan, Gudang, dan Buku Kontak tidak tersedia.</div>';
-  else isi += blokCadangan(h.cadangan || {}) + blokLemari(h) + blokIbr(h.ibr) + blokKcSigap(h.kcSigap);
+  else isi += blokCadangan(h.cadangan || {}) + blokLemari(h) + blokIbr(h.ibr) + blokKcSigap(h.kcSigap) + blokPjSigap(h.pjSigap, h.versi);
   isi += blokGalat(h.galat || [], h.catatanGalat);
   return '<div id="kartu-app-hub">' + kartu('Pusat Kendali LENSA Suite', h.adaHub ? 'Hub ' + e(h.versi) + ' · cadangan, gudang, buku kontak, galat semua aplikasi' : 'galat semua aplikasi', isi, kanan) + '</div>';
 }
@@ -11975,6 +12036,11 @@ Object.assign(AKSI2, {
   kirimKc: async function () {
     kabar('Mengirim data KC ke SIGAP Jakon… (bisa 10–60 detik)');
     var h = await muatHub('kirimKc');
+    if (h && h.antre) kabar(h.antre); else if (h && h.galatMuat) kabar('Gagal: ' + h.galatMuat);
+  },
+  ambilJakon: async function () { // 2.15: laporan Proyek Jakon SIGAP → Gudang
+    kabar('Mengambil laporan Proyek Jakon dari SIGAP Jakon… (bisa 10–60 detik)');
+    var h = await muatHub('ambilJakon');
     if (h && h.antre) kabar(h.antre); else if (h && h.galatMuat) kabar('Gagal: ' + h.galatMuat);
   },
   nonaktifOrang: async function (v) {
